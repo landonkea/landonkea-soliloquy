@@ -14,6 +14,9 @@ from __future__ import annotations
 
 import argparse
 import sys
+import threading
+from datetime import datetime, timezone
+from pathlib import Path
 
 from .entry import Entry
 from .storage import EntryStore
@@ -29,6 +32,41 @@ def list_entries(store: EntryStore) -> list[Entry]:
     return store.all()
 
 
+def record_entry(recordings_dir: str = "recordings") -> str:
+    """Record real audio to a timestamped .wav file, stopping when the
+    user presses Enter. Returns the file's path.
+
+    Deliberately does NOT create an Entry yet — transcription (next
+    piece) is what turns a recorded file into a real journal entry;
+    see recorder.py's module comment for why manual stop (not
+    silence-detection) is the right default for a reflective entry
+    rather than a short command."""
+    from .recorder import record_to_file  # deferred: only needed here, keeps `add`/`list` free of the pyaudio dependency
+
+    Path(recordings_dir).mkdir(parents=True, exist_ok=True)
+    filename = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H-%M-%S") + ".wav"
+    output_path = str(Path(recordings_dir) / filename)
+
+    stop_event = threading.Event()
+
+    def wait_for_enter():
+        input()
+        stop_event.set()
+
+    listener = threading.Thread(target=wait_for_enter, daemon=True)
+    listener.start()
+
+    print("Recording... press Enter to stop.")
+    try:
+        duration = record_to_file(output_path, stop_event)
+    except RuntimeError as exc:
+        print(f"Recording failed: {exc}")
+        raise
+    print(f"Saved {duration:.1f}s of audio to {output_path}")
+
+    return output_path
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="soliloquy", description="A voice-first journal.")
     parser.add_argument("--db", default="soliloquy.db", help="Path to the SQLite database file.")
@@ -39,7 +77,19 @@ def main(argv: list[str] | None = None) -> int:
 
     subparsers.add_parser("list", help="List all journal entries.")
 
+    record_parser = subparsers.add_parser(
+        "record", help="Record a voice entry (press Enter to stop). Transcription isn't wired up yet -- saves the audio file only."
+    )
+    record_parser.add_argument("--dir", default="recordings", help="Directory to save the .wav file in.")
+
     args = parser.parse_args(argv)
+
+    if args.command == "record":
+        # No database needed for this command yet -- see record_entry()'s
+        # docstring for why it doesn't create an Entry until transcription exists.
+        record_entry(args.dir)
+        return 0
+
     store = EntryStore(args.db)
     try:
         if args.command == "add":

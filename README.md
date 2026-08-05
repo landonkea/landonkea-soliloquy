@@ -32,21 +32,32 @@ fact — the recording is the whole interaction.
 **Built and tested today:**
 - `Entry` data model
 - `EntryStore` — add / get / list / delete / date-range query, all against a real SQLite file
-- A minimal CLI (`soliloquy add "some text"`, `soliloquy list`) — **text-only for now**, so the
-  storage layer is exercised by a real workflow immediately, without needing a microphone or a
-  transcription model configured first.
+- A minimal CLI (`soliloquy add "some text"`, `soliloquy list`) for typed entries
+- **Real microphone recording** (`soliloquy record`) — reuses the exact `pyaudio` pattern proven
+  in `landonkea-makeItSoNumberOne`'s desktop assistant. Manual stop (press Enter), not
+  silence-detection auto-stop — a deliberate choice for a reflective entry, where pausing to
+  think for a few seconds shouldn't get you cut off (contrast with `makeItSoNumberOne`'s
+  1.5-second auto-stop, which is correct for a short voice command but wrong here). Verified
+  against a real microphone, not just mocked. `record` doesn't create an `Entry` yet — it saves
+  the `.wav` file and prints its path; transcription (next) is what turns that into a real entry.
 
 **Next, in order:**
-1. **Recording** — capture real audio from a microphone (reusing the exact `pyaudio` pattern
-   already proven in `landonkea-makeItSoNumberOne`'s desktop assistant, not reinvented).
-2. **Transcription** — audio → text. Planned default: local Whisper (`faster-whisper`) for the
+1. **Transcription** — audio → text. Planned default: local Whisper (`faster-whisper`) for the
    same self-hosted-first reason the rest of this project's tooling prefers local/self-hosted
    options (Mosquitto over a cloud broker, Ollama alongside cloud AI providers) — with a real
    provider-abstraction interface so a cloud Whisper API can be swapped in per-user, not
-   hardcoded to one choice.
-3. **Analysis** — the per-day/week/month rollups this whole architecture is actually for.
-4. **A real recording UI** — desktop first (matching how every other app in this project's
-   ecosystem started narrow and grew), not a specific platform commitment yet.
+   hardcoded to one choice. Given this may hold sensitive personal disclosure, local-first
+   processing here is a real privacy requirement, not just a cost preference.
+2. **Analysis** — the per-day/week/month rollups this whole architecture is actually for.
+3. **A readable report export** for a date range (transcripts + rolled-up analysis) — meant to
+   be handed to a therapist/psychiatrist or read by the user to see real progress over weeks or
+   months, not just raw data. This is a core product goal here, not a nice-to-have.
+4. **Storage migration** — SQLite works for local proof-of-concept; the plan once this works
+   end-to-end is Postgres (transcripts/metadata/analysis — free managed tier, e.g. Supabase or
+   Neon) + object storage for audio specifically (e.g. Cloudflare R2 — no egress fees, matters
+   if audio is ever streamed/shared back out). Raw audio should never live inside the database
+   itself, free tier or not. `EntryStore`'s interface is already designed so this is a backend
+   swap, not a rewrite.
 
 **A future integration point, not built yet:** `landonkea-thinkLessScheduleMore`'s automation
 engine (`AutomationAction`/`AutomationRegistry`) makes "record a journal entry" a natural
@@ -57,10 +68,13 @@ plugs into the rest of the ecosystem, not a dependency for anything built so far
 ## Quick start
 
 ```bash
-pip install -e ".[dev]"
+pip install -e ".[dev]"                       # text-only (add/list), no audio deps
 python -m soliloquy.cli add "First entry, typed for now."
 python -m soliloquy.cli list
-pytest
+
+pip install -e ".[dev,audio]"                 # adds pyaudio, needed for `record`
+# macOS also needs the system library: brew install portaudio
+python -m soliloquy.cli record                # press Enter to stop
 ```
 
 ## Running tests

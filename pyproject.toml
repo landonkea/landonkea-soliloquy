@@ -11,6 +11,10 @@ dependencies = []
 
 [project.optional-dependencies]
 dev = ["pytest>=7.0"]
+# Only needed for `soliloquy record` -- text-only usage (`add`/`list`)
+# doesn't require a microphone library at all, and pyaudio needs the
+# system-level portaudio library installed first (see README).
+audio = ["pyaudio>=0.2.14"]
 
 [project.scripts]
 soliloquy = "soliloquy.cli:main"

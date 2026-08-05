@@ -21,8 +21,9 @@ fact — the recording is the whole interaction.
 - **`EntryStore`** (`src/soliloquy/storage.py`) — SQLite-backed storage, with a
   `range_between(start, end)` query built in from day one, because per-day/week/month analysis
   is just different `(start, end)` windows over the same query.
-- **Recording + transcription** — not built yet, see "What's built vs. what's next" below.
-- **Analysis** — not built yet either. The plan: periodic Claude calls over a date range's
+- **Recording** (`src/soliloquy/recorder.py`) + **transcription** (`src/soliloquy/transcriber.py`)
+  — both built, see "What's built vs. what's next" below.
+- **Analysis** — not built yet. The plan: periodic Claude calls over a date range's
   entries (mood/sentiment trends, recurring topics, a real weekly/monthly summary) — the same
   AI-provider pattern already used elsewhere (see `landonkea-makeItSoNumberOne`), not a bespoke
   ML model.
@@ -38,21 +39,23 @@ fact — the recording is the whole interaction.
   silence-detection auto-stop — a deliberate choice for a reflective entry, where pausing to
   think for a few seconds shouldn't get you cut off (contrast with `makeItSoNumberOne`'s
   1.5-second auto-stop, which is correct for a short voice command but wrong here). Verified
-  against a real microphone, not just mocked. `record` doesn't create an `Entry` yet — it saves
-  the `.wav` file and prints its path; transcription (next) is what turns that into a real entry.
+  against a real microphone, not just mocked. Plain `record` saves the `.wav` file and prints
+  its path without transcribing.
+- **Real local transcription** (`soliloquy transcribe <file>`, or `soliloquy record
+  --transcribe` to chain both steps) — `WhisperTranscriber` (`faster-whisper`, fully local, no
+  network access, no API key) is the default, deliberately: given this may hold sensitive
+  personal disclosure, audio never leaving the device is a real privacy requirement here, not
+  just a cost preference. Built behind a real `Transcriber` protocol so a cloud provider could
+  be swapped in later without any caller changing. Verified against real synthesized speech
+  (macOS `say` → transcribed by Whisper), not just mocked or silent audio — transcript came back
+  an exact match.
 
 **Next, in order:**
-1. **Transcription** — audio → text. Planned default: local Whisper (`faster-whisper`) for the
-   same self-hosted-first reason the rest of this project's tooling prefers local/self-hosted
-   options (Mosquitto over a cloud broker, Ollama alongside cloud AI providers) — with a real
-   provider-abstraction interface so a cloud Whisper API can be swapped in per-user, not
-   hardcoded to one choice. Given this may hold sensitive personal disclosure, local-first
-   processing here is a real privacy requirement, not just a cost preference.
-2. **Analysis** — the per-day/week/month rollups this whole architecture is actually for.
-3. **A readable report export** for a date range (transcripts + rolled-up analysis) — meant to
+1. **Analysis** — the per-day/week/month rollups this whole architecture is actually for.
+2. **A readable report export** for a date range (transcripts + rolled-up analysis) — meant to
    be handed to a therapist/psychiatrist or read by the user to see real progress over weeks or
    months, not just raw data. This is a core product goal here, not a nice-to-have.
-4. **Storage migration** — SQLite works for local proof-of-concept; the plan once this works
+3. **Storage migration** — SQLite works for local proof-of-concept; the plan once this works
    end-to-end is Postgres (transcripts/metadata/analysis — free managed tier, e.g. Supabase or
    Neon) + object storage for audio specifically (e.g. Cloudflare R2 — no egress fees, matters
    if audio is ever streamed/shared back out). Raw audio should never live inside the database
@@ -75,6 +78,10 @@ python -m soliloquy.cli list
 pip install -e ".[dev,audio]"                 # adds pyaudio, needed for `record`
 # macOS also needs the system library: brew install portaudio
 python -m soliloquy.cli record                # press Enter to stop
+
+pip install -e ".[dev,audio,transcribe]"       # adds faster-whisper, needed for transcription
+python -m soliloquy.cli record --transcribe    # record, then transcribe, then save as an entry
+python -m soliloquy.cli transcribe some-file.wav   # or transcribe an existing recording
 ```
 
 ## Running tests

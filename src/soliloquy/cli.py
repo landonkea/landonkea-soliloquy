@@ -1,13 +1,11 @@
 # ───────────────────────────────────────────────────────────────────
 # cli.py — minimal command-line interface
 # ───────────────────────────────────────────────────────────────────
-# Text-only for now (see README's "What's built vs. what's next") —
-# this exists so the storage layer is exercised by a real, typeable
-# workflow today, not just unit tests. Voice recording/transcription
-# plugs in later as an alternative way to produce the same `transcript`
-# string this already knows how to store and list — nothing here
-# changes shape when that lands, it's just another way to get text
-# into add_entry().
+# `add`/`list` are text-only. `record` captures real audio.
+# `transcribe` (or `record --transcribe`) turns an audio file into a
+# real Entry via a Transcriber (see transcriber.py) — the point where
+# recording and text entries converge back onto the same add_entry()
+# path, just with audio_path set too.
 # ───────────────────────────────────────────────────────────────────
 
 from __future__ import annotations
@@ -20,10 +18,21 @@ from pathlib import Path
 
 from .entry import Entry
 from .storage import EntryStore
+from .transcriber import Transcriber
 
 
 def add_entry(store: EntryStore, transcript: str) -> Entry:
     entry = Entry(transcript=transcript)
+    store.add(entry)
+    return entry
+
+
+def add_entry_from_audio(store: EntryStore, transcriber: Transcriber, audio_path: str) -> Entry:
+    """Transcribe `audio_path` and save the result as a real Entry with
+    audio_path set — the point where a recorded file and a typed entry
+    converge onto the same storage path."""
+    transcript = transcriber.transcribe(audio_path)
+    entry = Entry(transcript=transcript, audio_path=audio_path)
     store.add(entry)
     return entry
 
@@ -34,11 +43,11 @@ def list_entries(store: EntryStore) -> list[Entry]:
 
 def record_entry(recordings_dir: str = "recordings") -> str:
     """Record real audio to a timestamped .wav file, stopping when the
-    user presses Enter. Returns the file's path.
+    user presses Enter. Returns the file's path. Does NOT transcribe —
+    see add_entry_from_audio()/`soliloquy transcribe` for that, or use
+    `soliloquy record --transcribe` to chain both steps.
 
-    Deliberately does NOT create an Entry yet — transcription (next
-    piece) is what turns a recorded file into a real journal entry;
-    see recorder.py's module comment for why manual stop (not
+    See recorder.py's module comment for why manual stop (not
     silence-detection) is the right default for a reflective entry
     rather than a short command."""
     from .recorder import record_to_file  # deferred: only needed here, keeps `add`/`list` free of the pyaudio dependency
@@ -77,16 +86,21 @@ def main(argv: list[str] | None = None) -> int:
 
     subparsers.add_parser("list", help="List all journal entries.")
 
-    record_parser = subparsers.add_parser(
-        "record", help="Record a voice entry (press Enter to stop). Transcription isn't wired up yet -- saves the audio file only."
-    )
+    record_parser = subparsers.add_parser("record", help="Record a voice entry (press Enter to stop).")
     record_parser.add_argument("--dir", default="recordings", help="Directory to save the .wav file in.")
+    record_parser.add_argument(
+        "--transcribe", action="store_true",
+        help="Transcribe immediately after recording and save as a real entry (requires the [transcribe] extra)."
+    )
+
+    transcribe_parser = subparsers.add_parser("transcribe", help="Transcribe an existing audio file into a real entry.")
+    transcribe_parser.add_argument("audio_path", help="Path to the .wav file to transcribe.")
 
     args = parser.parse_args(argv)
 
-    if args.command == "record":
-        # No database needed for this command yet -- see record_entry()'s
-        # docstring for why it doesn't create an Entry until transcription exists.
+    if args.command == "record" and not args.transcribe:
+        # No database needed for this path -- plain `record` just saves
+        # the audio file, see record_entry()'s docstring.
         record_entry(args.dir)
         return 0
 
@@ -95,6 +109,17 @@ def main(argv: list[str] | None = None) -> int:
         if args.command == "add":
             entry = add_entry(store, args.text)
             print(f"Saved entry {entry.id} ({entry.word_count} words) at {entry.created_at.isoformat()}")
+        elif args.command == "record":
+            audio_path = record_entry(args.dir)
+            from .transcriber import WhisperTranscriber
+            print("Transcribing...")
+            entry = add_entry_from_audio(store, WhisperTranscriber(), audio_path)
+            print(f"Saved entry {entry.id}: \"{entry.transcript}\"")
+        elif args.command == "transcribe":
+            from .transcriber import WhisperTranscriber
+            print("Transcribing...")
+            entry = add_entry_from_audio(store, WhisperTranscriber(), args.audio_path)
+            print(f"Saved entry {entry.id}: \"{entry.transcript}\"")
         elif args.command == "list":
             entries = list_entries(store)
             if not entries:

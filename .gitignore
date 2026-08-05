@@ -1,0 +1,11 @@
+__pycache__/
+*.pyc
+.venv/
+*.egg-info/
+build/
+dist/
+
+# Real journal data and audio never get committed.
+*.db
+recordings/
+.env

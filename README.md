@@ -56,12 +56,22 @@ fact — the recording is the whole interaction.
   that needs a real `ANTHROPIC_API_KEY`, which isn't something available to verify with in the
   environment this was built in. Set the env var and run `soliloquy analyze` yourself to confirm
   the live path.
+- **Sharing flags and audience-filtered reports** (`soliloquy share`, `soliloquy report
+  --audience`) — every entry has two independent, per-entry flags, `shareable_with_partner` and
+  `shareable_with_provider`, both defaulting to private/`False`. These are deliberately NOT one
+  "privacy level" — a partner and a therapist are different audiences with different appropriate
+  content, not points on the same scale, so an entry can be shared with one, both, or neither.
+  Nothing is shared automatically or assumed at recording time; sharing is always a separate,
+  explicit, later decision (`soliloquy share <id> --partner`). `soliloquy report --audience
+  partner|provider|self` then generates a readable write-up (summary, mood notes, key topics,
+  full transcripts) built from ONLY the entries marked for that audience — critically, the
+  filtering happens before entries ever reach the analyzer, so a private entry can't leak into
+  the AI-generated summary text even indirectly. `--audience self` (the default) includes
+  everything, for your own review. Add `--output some-file.md` to write the report to a file
+  instead of the terminal, for actually handing it to someone.
 
 **Next, in order:**
-1. **A readable report export** for a date range (transcripts + rolled-up analysis) — meant to
-   be handed to a therapist/psychiatrist or read by the user to see real progress over weeks or
-   months, not just raw data. This is a core product goal here, not a nice-to-have.
-2. **Storage migration** — SQLite works for local proof-of-concept; the plan once this works
+1. **Storage migration** — SQLite works for local proof-of-concept; the plan once this works
    end-to-end is Postgres (transcripts/metadata/analysis — free managed tier, e.g. Supabase or
    Neon) + object storage for audio specifically (e.g. Cloudflare R2 — no egress fees, matters
    if audio is ever streamed/shared back out). Raw audio should never live inside the database
@@ -91,6 +101,11 @@ python -m soliloquy.cli transcribe some-file.wav   # or transcribe an existing r
 
 export ANTHROPIC_API_KEY=sk-ant-...
 python -m soliloquy.cli analyze --days 7           # analyze the last week's entries
+
+python -m soliloquy.cli share <entry-id> --partner             # mark an entry shareable with your partner
+python -m soliloquy.cli share <entry-id> --no-partner --provider  # unshare from partner, share with provider
+python -m soliloquy.cli report --days 30 --audience partner --output partner-report.md
+python -m soliloquy.cli report --days 30 --audience provider --output provider-report.md
 ```
 
 ## Running tests

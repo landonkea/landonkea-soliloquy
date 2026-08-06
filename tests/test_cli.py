@@ -3,7 +3,7 @@ from datetime import datetime, timedelta, timezone
 import pytest
 
 from soliloquy.analyzer import AnalysisResult, NoEntriesError
-from soliloquy.cli import add_entry, add_entry_from_audio, analyze_range, list_entries
+from soliloquy.cli import add_entry, add_entry_from_audio, analyze_range, format_report, list_entries, main, report_range
 from soliloquy.entry import Entry
 from soliloquy.storage import EntryStore
 
@@ -128,3 +128,137 @@ def test_analyze_range_raises_no_entries_error_when_window_is_empty(tmp_path):
             analyze_range(store, FakeAnalyzer(), days=7)
     finally:
         store.close()
+
+
+# ── report_range / format_report ────────────────────────────────────
+
+def test_report_range_self_audience_sees_every_entry_regardless_of_sharing_flags(tmp_path):
+    store = EntryStore(str(tmp_path / "test.db"))
+    try:
+        store.add(Entry(transcript="private one"))
+        store.add(Entry(transcript="shared with partner", shareable_with_partner=True))
+
+        analyzer = FakeAnalyzer()
+        report_range(store, analyzer, days=7, audience="self")
+
+        assert {e.transcript for e in analyzer.last_entries} == {"private one", "shared with partner"}
+    finally:
+        store.close()
+
+
+def test_report_range_partner_audience_only_sees_entries_shared_with_partner(tmp_path):
+    store = EntryStore(str(tmp_path / "test.db"))
+    try:
+        store.add(Entry(transcript="private one"))
+        store.add(Entry(transcript="shared with partner", shareable_with_partner=True))
+        store.add(Entry(transcript="shared with provider only", shareable_with_provider=True))
+
+        analyzer = FakeAnalyzer()
+        report_range(store, analyzer, days=7, audience="partner")
+
+        assert [e.transcript for e in analyzer.last_entries] == ["shared with partner"]
+    finally:
+        store.close()
+
+
+def test_report_range_provider_audience_only_sees_entries_shared_with_provider(tmp_path):
+    store = EntryStore(str(tmp_path / "test.db"))
+    try:
+        store.add(Entry(transcript="private one"))
+        store.add(Entry(transcript="shared with provider", shareable_with_provider=True))
+
+        analyzer = FakeAnalyzer()
+        report_range(store, analyzer, days=7, audience="provider")
+
+        assert [e.transcript for e in analyzer.last_entries] == ["shared with provider"]
+    finally:
+        store.close()
+
+
+def test_report_range_raises_no_entries_error_when_nothing_matches_the_audience(tmp_path):
+    store = EntryStore(str(tmp_path / "test.db"))
+    try:
+        store.add(Entry(transcript="private one"))
+        with pytest.raises(NoEntriesError):
+            report_range(store, FakeAnalyzer(), days=7, audience="partner")
+    finally:
+        store.close()
+
+
+def test_report_range_rejects_an_unknown_audience(tmp_path):
+    store = EntryStore(str(tmp_path / "test.db"))
+    try:
+        store.add(Entry(transcript="entry"))
+        with pytest.raises(ValueError):
+            report_range(store, FakeAnalyzer(), days=7, audience="stranger")
+    finally:
+        store.close()
+
+
+def test_format_report_includes_summary_mood_topics_and_entry_transcripts():
+    result = AnalysisResult(
+        entry_count=1, total_word_count=3, summary="a summary", mood_notes="steady",
+        key_topics=["work", "sleep"],
+    )
+    entries = [Entry(transcript="an entry to show")]
+
+    text = format_report(result, entries, audience="partner", days=7)
+
+    assert "a summary" in text
+    assert "steady" in text
+    assert "work, sleep" in text
+    assert "an entry to show" in text
+    assert "audience: partner" in text
+
+
+# ── `share` CLI command ──────────────────────────────────────────────
+
+def test_share_command_sets_the_requested_flags(tmp_path):
+    db_path = str(tmp_path / "test.db")
+    store = EntryStore(db_path)
+    entry = Entry(transcript="entry")
+    store.add(entry)
+    store.close()
+
+    exit_code = main(["--db", db_path, "share", entry.id, "--partner"])
+
+    assert exit_code == 0
+    with EntryStore(db_path) as store:
+        fetched = store.get(entry.id)
+        assert fetched.shareable_with_partner is True
+        assert fetched.shareable_with_provider is False
+
+
+def test_share_command_can_unset_a_flag(tmp_path):
+    db_path = str(tmp_path / "test.db")
+    store = EntryStore(db_path)
+    entry = Entry(transcript="entry", shareable_with_partner=True)
+    store.add(entry)
+    store.close()
+
+    exit_code = main(["--db", db_path, "share", entry.id, "--no-partner"])
+
+    assert exit_code == 0
+    with EntryStore(db_path) as store:
+        assert store.get(entry.id).shareable_with_partner is False
+
+
+def test_share_command_returns_nonzero_for_an_unknown_entry_id(tmp_path):
+    db_path = str(tmp_path / "test.db")
+    EntryStore(db_path).close()
+
+    exit_code = main(["--db", db_path, "share", "does-not-exist", "--partner"])
+
+    assert exit_code == 1
+
+
+def test_share_command_returns_nonzero_when_no_flags_are_passed(tmp_path):
+    db_path = str(tmp_path / "test.db")
+    store = EntryStore(db_path)
+    entry = Entry(transcript="entry")
+    store.add(entry)
+    store.close()
+
+    exit_code = main(["--db", db_path, "share", entry.id])
+
+    assert exit_code == 1

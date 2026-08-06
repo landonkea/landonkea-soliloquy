@@ -117,3 +117,92 @@ def test_entrystore_closes_even_if_an_exception_is_raised_inside_the_with_block(
 
     with pytest.raises(sqlite3.ProgrammingError):
         store.all()
+
+
+# ── Sharing flags ────────────────────────────────────────────────────
+
+def test_new_entries_default_to_private_shared_with_no_one(store):
+    entry = Entry(transcript="private by default")
+    store.add(entry)
+
+    fetched = store.get(entry.id)
+
+    assert fetched.shareable_with_partner is False
+    assert fetched.shareable_with_provider is False
+
+
+def test_sharing_flags_round_trip_when_set_explicitly(store):
+    entry = Entry(transcript="shared with partner only", shareable_with_partner=True)
+    store.add(entry)
+
+    fetched = store.get(entry.id)
+
+    assert fetched.shareable_with_partner is True
+    assert fetched.shareable_with_provider is False
+
+
+def test_update_sharing_sets_only_the_flag_passed(store):
+    entry = Entry(transcript="entry")
+    store.add(entry)
+
+    store.update_sharing(entry.id, shareable_with_provider=True)
+
+    fetched = store.get(entry.id)
+    assert fetched.shareable_with_provider is True
+    assert fetched.shareable_with_partner is False  # untouched
+
+
+def test_update_sharing_can_set_both_flags_at_once(store):
+    entry = Entry(transcript="entry")
+    store.add(entry)
+
+    store.update_sharing(entry.id, shareable_with_partner=True, shareable_with_provider=True)
+
+    fetched = store.get(entry.id)
+    assert fetched.shareable_with_partner is True
+    assert fetched.shareable_with_provider is True
+
+
+def test_update_sharing_can_unset_a_previously_set_flag(store):
+    entry = Entry(transcript="entry", shareable_with_partner=True)
+    store.add(entry)
+
+    store.update_sharing(entry.id, shareable_with_partner=False)
+
+    assert store.get(entry.id).shareable_with_partner is False
+
+
+def test_update_sharing_returns_false_for_an_unknown_entry_id(store):
+    assert store.update_sharing("does-not-exist", shareable_with_partner=True) is False
+
+
+def test_update_sharing_with_no_flags_passed_is_a_no_op_that_confirms_existence(store):
+    entry = Entry(transcript="entry")
+    store.add(entry)
+
+    assert store.update_sharing(entry.id) is True
+    assert store.update_sharing("does-not-exist") is False
+
+
+def test_a_db_created_before_sharing_columns_existed_still_opens_and_defaults_to_private(tmp_path):
+    # Simulates an existing DB from before this feature -- create one
+    # with the OLD schema by hand, then confirm EntryStore's
+    # _ensure_sharing_columns() migration guard handles it.
+    db_path = str(tmp_path / "old.db")
+    conn = sqlite3.connect(db_path)
+    conn.executescript(
+        "CREATE TABLE entries (id TEXT PRIMARY KEY, created_at TEXT NOT NULL, "
+        "transcript TEXT NOT NULL, audio_path TEXT);"
+    )
+    conn.execute(
+        "INSERT INTO entries (id, created_at, transcript, audio_path) VALUES (?, ?, ?, ?)",
+        ("old-id", datetime.now(timezone.utc).isoformat(), "an entry from before this feature existed", None),
+    )
+    conn.commit()
+    conn.close()
+
+    with EntryStore(db_path) as store:
+        fetched = store.get("old-id")
+        assert fetched.transcript == "an entry from before this feature existed"
+        assert fetched.shareable_with_partner is False
+        assert fetched.shareable_with_provider is False

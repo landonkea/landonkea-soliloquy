@@ -63,6 +63,59 @@ def analyze_range(store: EntryStore, analyzer: Analyzer, days: int) -> AnalysisR
     return analyzer.analyze(entries)
 
 
+AUDIENCES = ("self", "partner", "provider")
+
+
+def report_range(store: EntryStore, analyzer: Analyzer, days: int, audience: str) -> tuple[AnalysisResult, list[Entry]]:
+    """Like analyze_range, but audience-aware: for "partner"/"provider",
+    entries are filtered down to only those explicitly marked shareable
+    with that audience BEFORE they ever reach the Analyzer. Filtering
+    only the displayed transcripts afterward would still let private
+    entries leak into the AI-generated summary text itself -- the
+    analyzer must never see an entry it isn't allowed to describe."""
+    if audience not in AUDIENCES:
+        raise ValueError(f"Unknown audience {audience!r}, must be one of {AUDIENCES}")
+
+    end = datetime.now(timezone.utc)
+    start = end - timedelta(days=days)
+    entries = store.range_between(start, end)
+
+    if audience == "partner":
+        entries = [e for e in entries if e.shareable_with_partner]
+    elif audience == "provider":
+        entries = [e for e in entries if e.shareable_with_provider]
+
+    result = analyzer.analyze(entries)
+    return result, entries
+
+
+def format_report(result: AnalysisResult, entries: list[Entry], audience: str, days: int) -> str:
+    """A readable, shareable write-up -- the actual point of `report`
+    over `analyze` (which is a quick self-facing terminal glance)."""
+    lines = [
+        f"Soliloquy report -- last {days} days -- audience: {audience}",
+        f"{result.entry_count} entries, {result.total_word_count} words",
+        "",
+        "Summary",
+        "-------",
+        result.summary,
+        "",
+        "Mood",
+        "----",
+        result.mood_notes,
+        "",
+        "Key topics",
+        "----------",
+        ", ".join(result.key_topics) if result.key_topics else "(none noted)",
+        "",
+        "Entries",
+        "-------",
+    ]
+    for entry in entries:
+        lines.append(f"[{entry.created_at.isoformat()}] {entry.transcript}")
+    return "\n".join(lines) + "\n"
+
+
 def record_entry(recordings_dir: str = "recordings") -> str:
     """Record real audio to a timestamped .wav file, stopping when the
     user presses Enter. Returns the file's path. Does NOT transcribe —
@@ -121,6 +174,22 @@ def main(argv: list[str] | None = None) -> int:
     analyze_parser = subparsers.add_parser("analyze", help="Analyze recent entries (requires ANTHROPIC_API_KEY).")
     analyze_parser.add_argument("--days", type=int, default=7, help="How many days back to analyze (default: 7).")
 
+    share_parser = subparsers.add_parser("share", help="Mark an existing entry as shareable with an audience.")
+    share_parser.add_argument("entry_id", help="The entry's id (see `soliloquy list`).")
+    share_parser.add_argument("--partner", action=argparse.BooleanOptionalAction, default=None,
+                               help="Set (--partner) or clear (--no-partner) shareable_with_partner.")
+    share_parser.add_argument("--provider", action=argparse.BooleanOptionalAction, default=None,
+                               help="Set (--provider) or clear (--no-provider) shareable_with_provider.")
+
+    report_parser = subparsers.add_parser(
+        "report", help="Generate a readable, audience-filtered report (requires ANTHROPIC_API_KEY)."
+    )
+    report_parser.add_argument("--days", type=int, default=7, help="How many days back to report on (default: 7).")
+    report_parser.add_argument("--audience", choices=AUDIENCES, default="self",
+                                help="Who this report is for -- 'self' sees everything; "
+                                     "'partner'/'provider' only see entries explicitly shared with them.")
+    report_parser.add_argument("--output", help="Write the report to this file instead of printing it.")
+
     args = parser.parse_args(argv)
 
     if args.command == "record" and not args.transcribe:
@@ -155,6 +224,30 @@ def main(argv: list[str] | None = None) -> int:
             print(f"Summary: {result.summary}\n")
             print(f"Mood: {result.mood_notes}\n")
             print(f"Key topics: {', '.join(result.key_topics)}")
+        elif args.command == "share":
+            if args.partner is None and args.provider is None:
+                print("Nothing to change -- pass --partner/--no-partner and/or --provider/--no-provider.")
+                return 1
+            updated = store.update_sharing(
+                args.entry_id, shareable_with_partner=args.partner, shareable_with_provider=args.provider
+            )
+            if not updated:
+                print(f"No entry found with id {args.entry_id}")
+                return 1
+            print(f"Updated sharing for entry {args.entry_id}.")
+        elif args.command == "report":
+            from .analyzer import ClaudeAnalyzer, NoEntriesError
+            try:
+                result, entries = report_range(store, ClaudeAnalyzer(), args.days, args.audience)
+            except NoEntriesError:
+                print(f"No entries for audience '{args.audience}' in the last {args.days} days.")
+                return 0
+            report_text = format_report(result, entries, args.audience, args.days)
+            if args.output:
+                Path(args.output).write_text(report_text)
+                print(f"Wrote report to {args.output}")
+            else:
+                print(report_text)
     return 0
 
 

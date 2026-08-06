@@ -27,15 +27,16 @@ Out of scope for now (confirmed with the user, not forgotten): the MQTT bridge t
 - [x] CI runs against real Postgres + MinIO service containers, not mocks
 - [x] All existing tests pass against the real Postgres backend (68 tests)
 
-## Stage 2 — Backend API (FastAPI) — next up
+## Stage 2 — Backend API (FastAPI) ✅ done
 
-- [ ] `src/soliloquy/web/app.py` — thin FastAPI layer over the existing package functions
-      (`add_entry`, `add_entry_from_audio`, `list_entries`, `report_range`, `format_report`,
-      `store.update_sharing`) — no business logic duplicated into the web layer
-- [ ] Routes: `GET/POST /entries`, `POST /entries/audio`, `POST /entries/{id}/share`,
+- [x] `src/soliloquy/web/app.py` — thin FastAPI layer over the existing package functions
+      (`add_entry`, `list_entries`, `report_range`, `format_report`, `store.update_sharing`) — no
+      business logic duplicated into the web layer
+- [x] Routes: `GET/POST /entries`, `POST /entries/audio`, `POST /entries/{id}/share`,
       `POST /reports`, `GET /media/{key}`
-- [ ] `python -m soliloquy.web` runs it via `uvicorn`
-- [ ] Tested with FastAPI's `TestClient` against real Postgres + MinIO
+- [x] `python -m soliloquy.web` (or the `soliloquy-web` console script) runs it via `uvicorn`
+- [x] Tested with FastAPI's `TestClient` against real Postgres + MinIO (8 tests); manually
+      smoke-tested against a real running server with `curl`
 
 ## Stage 3 — Video capture
 

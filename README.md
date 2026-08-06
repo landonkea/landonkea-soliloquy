@@ -29,6 +29,9 @@ fact — the recording is the whole interaction.
 - **Recording** (`src/soliloquy/recorder.py`) + **transcription** (`src/soliloquy/transcriber.py`)
   — both built, see "What's built vs. what's next" below.
 - **Analysis** (`src/soliloquy/analyzer.py`) — built, see "What's built vs. what's next" below.
+- **`scheduler.py` + `analysis_store.py`** — a background job (web app only) runs analysis
+  automatically every few hours and saves the result so there's usually something to look at on
+  the Analysis page without asking for it on demand.
 - **CLI** (`src/soliloquy/cli.py`) and a **web app** (`src/soliloquy/web/`, in progress — see
   `CHECKLIST.md`) both sit on top of the same package above; neither duplicates the other's logic.
 
@@ -68,6 +71,16 @@ fact — the recording is the whole interaction.
   fallback-chain behavior) but none has been verified against a real, live API call in the
   environment this was built in — no real API keys were available to verify with. Set the relevant
   env var(s) and run `soliloquy analyze` yourself to confirm the live path.
+- **Automatic background analysis** (`/analysis` page, web app only) — a scheduled job
+  (`scheduler.py`) runs analysis every `$ANALYSIS_INTERVAL_HOURS` hours (default 6) over the last
+  `$ANALYSIS_WINDOW_DAYS` days (default 1) and saves the result via `analysis_store.py`, so the
+  Analysis page usually has something to show without asking for it on demand. Always analyzes
+  "self" (everything, unfiltered) — auto-generating something under the partner/provider audience
+  would mean auto-deciding what's fit to share, which contradicts sharing always being an
+  explicit, later, human decision. **This cadence is a starting point, not tuned**: running
+  analysis this often trades rate-limit headroom and per-run signal quality (few new entries
+  between 6-hour runs) for freshness — flagged in `CHECKLIST.md` to revisit once real usage shows
+  what actually makes sense.
 - **Sharing flags and audience-filtered reports** (`soliloquy share`, `soliloquy report
   --audience`) — every entry has two independent, per-entry flags, `shareable_with_partner` and
   `shareable_with_provider`, both defaulting to private/`False`. These are deliberately NOT one

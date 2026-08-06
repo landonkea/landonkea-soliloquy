@@ -19,6 +19,7 @@ from __future__ import annotations
 import os
 import tempfile
 import uuid
+from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Optional
 
@@ -26,17 +27,41 @@ from fastapi import Depends, FastAPI, File, Form, HTTPException, Request, Respon
 from fastapi.responses import HTMLResponse, PlainTextResponse, StreamingResponse
 from fastapi.templating import Jinja2Templates
 
+from ..analysis_store import AnalysisSnapshotStore
 from ..analyzer import NoEntriesError, get_default_analyzer
 from ..cli import AUDIENCES, DEFAULT_DATABASE_URL, add_entry, list_entries, report_range
 from ..entry import Entry
 from ..object_storage import ObjectStore
 from ..report import FORMATS, build_report_content, format_html, format_markdown, format_pdf, format_text
+from ..scheduler import start_scheduler
 from ..storage import EntryStore
 from ..transcriber import WhisperTranscriber
 from ..video import extract_audio
 
-app = FastAPI(title="Soliloquy")
+
+@asynccontextmanager
+async def _lifespan(app: FastAPI):
+    # Disabled in tests (see tests/test_web.py) so the test suite
+    # doesn't spin up a real background timer against the test
+    # database on every TestClient instantiation.
+    scheduler = None
+    if os.environ.get("SOLILOQUY_DISABLE_SCHEDULER") != "1":
+        scheduler = start_scheduler()
+    yield
+    if scheduler is not None:
+        scheduler.shutdown(wait=False)
+
+
+app = FastAPI(title="Soliloquy", lifespan=_lifespan)
 templates = Jinja2Templates(directory=str(Path(__file__).parent / "templates"))
+
+
+def get_analysis_store():
+    store = AnalysisSnapshotStore(os.environ.get("DATABASE_URL", DEFAULT_DATABASE_URL))
+    try:
+        yield store
+    finally:
+        store.close()
 
 _object_store: Optional[ObjectStore] = None
 
@@ -250,3 +275,9 @@ def new_entry_page(request: Request):
 @app.get("/report", response_class=HTMLResponse)
 def report_page(request: Request):
     return templates.TemplateResponse(request, "report.html", {"audiences": AUDIENCES})
+
+
+@app.get("/analysis", response_class=HTMLResponse)
+def analysis_page(request: Request, snapshot_store: AnalysisSnapshotStore = Depends(get_analysis_store)):
+    snapshots = snapshot_store.recent(limit=10)
+    return templates.TemplateResponse(request, "analysis.html", {"snapshots": snapshots})

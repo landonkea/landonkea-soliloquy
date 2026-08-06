@@ -1,4 +1,10 @@
 import os
+
+# Must be set before soliloquy.web.app is imported / TestClient triggers
+# the app's startup event -- otherwise every test run spins up a real
+# background scheduler hitting the test database on a timer.
+os.environ.setdefault("SOLILOQUY_DISABLE_SCHEDULER", "1")
+
 import subprocess
 import sys
 import wave
@@ -8,8 +14,9 @@ from unittest.mock import MagicMock, patch
 import pytest
 from fastapi.testclient import TestClient
 
+from soliloquy.analysis_store import AnalysisSnapshotStore
 from soliloquy.storage import EntryStore
-from soliloquy.web.app import app, get_store
+from soliloquy.web.app import app, get_analysis_store, get_store
 
 TEST_DATABASE_URL = os.environ.get(
     "TEST_DATABASE_URL", "postgresql://soliloquy:soliloquy@localhost:5433/soliloquy_test"
@@ -24,13 +31,24 @@ def _override_get_store():
         store.close()
 
 
+def _override_get_analysis_store():
+    store = AnalysisSnapshotStore(TEST_DATABASE_URL)
+    try:
+        yield store
+    finally:
+        store.close()
+
+
 app.dependency_overrides[get_store] = _override_get_store
+app.dependency_overrides[get_analysis_store] = _override_get_analysis_store
 
 
 @pytest.fixture(autouse=True)
 def _clean_db():
     with EntryStore(TEST_DATABASE_URL) as store:
         store._conn.execute("TRUNCATE TABLE entries")
+    with AnalysisSnapshotStore(TEST_DATABASE_URL) as store:
+        store._conn.execute("TRUNCATE TABLE analysis_snapshots")
     yield
 
 
@@ -258,3 +276,26 @@ def test_report_page_loads_and_lists_all_audiences(client):
     assert response.status_code == 200
     for audience in ("self", "partner", "provider"):
         assert audience in response.text
+
+
+def test_analysis_page_loads_and_shows_a_message_when_empty(client):
+    response = client.get("/analysis")
+    assert response.status_code == 200
+    assert "No automatic analysis yet" in response.text
+
+
+def test_analysis_page_shows_saved_snapshots(client):
+    from soliloquy.analysis_store import AnalysisSnapshot
+    from soliloquy.analyzer import AnalysisResult
+
+    with AnalysisSnapshotStore(TEST_DATABASE_URL) as store:
+        store.add(AnalysisSnapshot(
+            days=1, audience="self",
+            result=AnalysisResult(entry_count=3, total_word_count=30, summary="a scheduled summary",
+                                   mood_notes="steady", key_topics=["work"]),
+        ))
+
+    response = client.get("/analysis")
+
+    assert response.status_code == 200
+    assert "a scheduled summary" in response.text

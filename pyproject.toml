@@ -22,7 +22,7 @@ audio = ["pyaudio>=0.2.14"]
 # Only needed for `soliloquy transcribe`/the transcribe-on-record flow.
 transcribe = ["faster-whisper>=1.0.0"]
 # Only needed to run the web app (`python -m soliloquy.web`).
-web = ["fastapi>=0.110", "uvicorn>=0.29", "python-multipart>=0.0.9", "jinja2>=3.1"]
+web = ["fastapi>=0.110", "uvicorn>=0.29", "python-multipart>=0.0.9", "jinja2>=3.1", "apscheduler>=3.10,<4"]
 
 [project.scripts]
 soliloquy = "soliloquy.cli:main"

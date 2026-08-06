@@ -98,6 +98,25 @@ Out of scope for now (confirmed with the user, not forgotten): the MQTT bridge t
       available in this environment. Set `OPENROUTER_API_KEY`/`GEMINI_API_KEY`/`ANTHROPIC_API_KEY`
       and run `soliloquy analyze` yourself to confirm the live path for whichever provider(s) you use
 
+## Extra: automatic background analysis ✅ done
+
+- [x] `analysis_store.py` — `AnalysisSnapshotStore`, a persisted history of past `AnalysisResult`s
+      (separate table/concept from entries -- a snapshot is derived and disposable, an entry isn't)
+- [x] `scheduler.py` — `run_scheduled_analysis()` (directly testable, analyzer/db overridable) +
+      `start_scheduler()` (APScheduler `BackgroundScheduler`, interval configurable via
+      `$ANALYSIS_INTERVAL_HOURS`, default **6 hours**, window via `$ANALYSIS_WINDOW_DAYS`, default
+      1 day). Wired into the web app's FastAPI `lifespan`, started/stopped with the server.
+      Failures are logged, not raised -- a background job failing shouldn't crash the process.
+- [x] New `/analysis` page shows the most recent snapshots, so there's usually something to look
+      at without clicking "Generate" on the Report page
+- [x] Verified live: ran `run_scheduled_analysis()` directly against the real running server's
+      database (both the real "no keys configured" failure path, and a stubbed-analyzer success
+      path), then confirmed the saved snapshot actually renders on `/analysis` in a real browser
+- [x] **Explicitly flagged as a starting point, not a tuned cadence**: every-6-hours trades
+      rate-limit headroom and signal quality (little new material between runs) for freshness.
+      Revisit once real usage shows what cadence actually makes sense -- the interval/window are
+      both just env vars, no code change needed to retune them later
+
 ## Right after this
 
 - [ ] Test the video-capture flow from a real phone (not just desktop browser + synthesized test

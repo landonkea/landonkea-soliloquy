@@ -1,0 +1,26 @@
+{% extends "base.html" %}
+{% block title %}Analysis — Soliloquy{% endblock %}
+{% block content %}
+  <h1>Analysis</h1>
+  <p>Runs automatically in the background (every few hours by default -- see
+     <code>$ANALYSIS_INTERVAL_HOURS</code>), so there's usually something here without asking for
+     it. For a specific date range or a shareable write-up instead, use <a href="/report">Report</a>.</p>
+
+  {% if not snapshots %}
+    <p>No automatic analysis yet -- it runs on a timer in the background, so check back later,
+       or generate one on demand via <a href="/report">Report</a>.</p>
+  {% endif %}
+
+  {% for snapshot in snapshots %}
+    <div class="entry">
+      <div class="entry-meta">
+        {{ snapshot.created_at.isoformat() }} — last {{ snapshot.days }} day(s) —
+        {{ snapshot.result.entry_count }} entries, {{ snapshot.result.total_word_count }} words
+      </div>
+      <p><strong>Summary:</strong> {{ snapshot.result.summary }}</p>
+      <p><strong>Mood:</strong> {{ snapshot.result.mood_notes }}</p>
+      <p><strong>Key topics:</strong>
+        {{ snapshot.result.key_topics | join(", ") if snapshot.result.key_topics else "(none noted)" }}</p>
+    </div>
+  {% endfor %}
+{% endblock %}

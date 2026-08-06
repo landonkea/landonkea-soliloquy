@@ -52,6 +52,10 @@ def _title(content: ReportContent) -> str:
     return f"Soliloquy report -- last {content.days} days -- audience: {content.audience}"
 
 
+def _topics_line(content: ReportContent) -> str:
+    return ", ".join(content.key_topics) if content.key_topics else "(none noted)"
+
+
 def format_text(content: ReportContent) -> str:
     lines = [
         _title(content),
@@ -67,7 +71,7 @@ def format_text(content: ReportContent) -> str:
         "",
         "Key topics",
         "----------",
-        ", ".join(content.key_topics) if content.key_topics else "(none noted)",
+        _topics_line(content),
         "",
         "Entries",
         "-------",
@@ -93,7 +97,7 @@ def format_markdown(content: ReportContent) -> str:
         "",
         "## Key topics",
         "",
-        ", ".join(content.key_topics) if content.key_topics else "(none noted)",
+        _topics_line(content),
         "",
         "## Entries",
         "",
@@ -104,7 +108,7 @@ def format_markdown(content: ReportContent) -> str:
 
 
 def format_html(content: ReportContent) -> str:
-    topics = ", ".join(content.key_topics) if content.key_topics else "(none noted)"
+    topics = _topics_line(content)
     entries_html = "\n".join(
         f"<li><strong>{html_escape(created_at)}</strong> -- {html_escape(transcript)}</li>"
         for created_at, transcript in content.entries
@@ -164,7 +168,7 @@ def format_pdf(content: ReportContent) -> bytes:
 
     section("Summary", content.summary)
     section("Mood", content.mood_notes)
-    section("Key topics", ", ".join(content.key_topics) if content.key_topics else "(none noted)")
+    section("Key topics", _topics_line(content))
 
     line("Entries", 12, bold=True)
     for created_at, transcript in content.entries:

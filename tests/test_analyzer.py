@@ -124,7 +124,7 @@ def test_analyze_raises_on_unexpected_response_shape():
     response.json.return_value = {"unexpected": "shape"}
 
     with patch("requests.post", return_value=response):
-        with pytest.raises(RuntimeError, match="Unexpected Claude API response shape"):
+        with pytest.raises(RuntimeError, match="Unexpected Claude response shape"):
             analyzer.analyze(_make_entries())
 
 

@@ -130,27 +130,74 @@ def _parse_response(response_text: str, entry_count: int, entries: list[Entry], 
     )
 
 
-class ClaudeAnalyzer:
+class _HttpAnalyzer:
+    """Shared analyze()/error-handling for all three HTTP-based
+    providers below -- each subclass only supplies how to make its
+    request and how to pull the text out of its own response shape.
+    Collapses what used to be ~90 lines of near-identical
+    empty-check/key-check/429-check/parse code (repeated once per
+    provider) into one place."""
+
+    key_label: str = ""        # e.g. "Anthropic" -- used in the "No X API key found" message
+    api_key_env_var: str = ""  # e.g. "ANTHROPIC_API_KEY"
+
     def __init__(self, api_key: str | None = None):
         # Falls back to the environment, matching makeItSoNumberOne's
         # convention, but accepts an explicit key too so tests (and
         # anyone running multiple profiles) don't have to mutate
         # process-wide environment variables.
-        self.api_key = api_key or os.environ.get("ANTHROPIC_API_KEY", "")
+        self.api_key = api_key or os.environ.get(self.api_key_env_var, "")
+
+    @property
+    def _label(self) -> str:
+        """Used in rate-limit/API-error/parse-error messages. Overridden
+        by providers that vary by model (OpenRouter, Gemini) to include
+        which model, so FallbackAnalyzer's aggregated errors stay
+        debuggable about exactly which model failed."""
+        return self.key_label
 
     def analyze(self, entries: list[Entry]) -> AnalysisResult:
         if not entries:
             raise NoEntriesError("Cannot analyze an empty list of entries.")
         if not self.api_key:
             raise RuntimeError(
-                "No Anthropic API key found. Set ANTHROPIC_API_KEY or pass api_key= explicitly."
+                f"No {self.key_label} API key found. Set {self.api_key_env_var} or pass api_key= explicitly."
             )
 
-        response_text = self._call_claude(_build_prompt(entries))
-        return _parse_response(response_text, len(entries), entries, "Claude")
+        response = self._request(_build_prompt(entries))
+        if response.status_code == 429:
+            raise RateLimitError(f"{self._label} rate limited: {response.text}")
+        if response.status_code != 200:
+            raise RuntimeError(f"{self._label} API error: {response.status_code} {response.text}")
 
-    def _call_claude(self, prompt: str) -> str:
-        response = requests.post(
+        data = response.json()
+        try:
+            text = self._extract_text(data)
+        except (KeyError, IndexError) as exc:
+            raise RuntimeError(f"Unexpected {self._label} response shape: {data}") from exc
+
+        return _parse_response(text, len(entries), entries, self._label)
+
+    def _request(self, prompt: str):  # -> requests.Response, subclass provides
+        raise NotImplementedError
+
+    def _extract_text(self, data: dict) -> str:
+        raise NotImplementedError
+
+
+class ClaudeAnalyzer(_HttpAnalyzer):
+    # The service is "Anthropic" (used in the missing-key message, to
+    # match its env var name) but the model/product is "Claude" (used
+    # everywhere else -- rate-limit/API-error/parse-error messages).
+    key_label = "Anthropic"
+    api_key_env_var = "ANTHROPIC_API_KEY"
+
+    @property
+    def _label(self) -> str:
+        return "Claude"
+
+    def _request(self, prompt: str):
+        return requests.post(
             "https://api.anthropic.com/v1/messages",
             headers={
                 "x-api-key": self.api_key,
@@ -164,96 +211,67 @@ class ClaudeAnalyzer:
             },
             timeout=60,
         )
-        if response.status_code == 429:
-            raise RateLimitError(f"Claude rate limited: {response.text}")
-        if response.status_code != 200:
-            raise RuntimeError(f"Claude API error: {response.status_code} {response.text}")
 
-        data = response.json()
-        try:
-            return data["content"][0]["text"]
-        except (KeyError, IndexError) as exc:
-            raise RuntimeError(f"Unexpected Claude API response shape: {data}") from exc
+    def _extract_text(self, data: dict) -> str:
+        return data["content"][0]["text"]
 
 
-class OpenRouterAnalyzer:
+class OpenRouterAnalyzer(_HttpAnalyzer):
     """OpenRouter (https://openrouter.ai) fronts many models behind one
     OpenAI-compatible API -- only models with a `:free` suffix cost
     nothing, everything else is billed. One instance = one specific
     model; see build_free_analyzer() for chaining several free models
     together with FallbackAnalyzer."""
 
+    key_label = "OpenRouter"
+    api_key_env_var = "OPENROUTER_API_KEY"
+
     def __init__(self, model: str, api_key: str | None = None):
         self.model = model
-        self.api_key = api_key or os.environ.get("OPENROUTER_API_KEY", "")
+        super().__init__(api_key)
 
-    def analyze(self, entries: list[Entry]) -> AnalysisResult:
-        if not entries:
-            raise NoEntriesError("Cannot analyze an empty list of entries.")
-        if not self.api_key:
-            raise RuntimeError(
-                "No OpenRouter API key found. Set OPENROUTER_API_KEY or pass api_key= explicitly."
-            )
+    @property
+    def _label(self) -> str:
+        return f"OpenRouter ({self.model})"
 
-        response_text = self._call(_build_prompt(entries))
-        return _parse_response(response_text, len(entries), entries, f"OpenRouter ({self.model})")
-
-    def _call(self, prompt: str) -> str:
-        response = requests.post(
+    def _request(self, prompt: str):
+        return requests.post(
             "https://openrouter.ai/api/v1/chat/completions",
             headers={"Authorization": f"Bearer {self.api_key}", "Content-Type": "application/json"},
             json={"model": self.model, "messages": [{"role": "user", "content": prompt}]},
             timeout=60,
         )
-        if response.status_code == 429:
-            raise RateLimitError(f"OpenRouter rate limited model {self.model}: {response.text}")
-        if response.status_code != 200:
-            raise RuntimeError(f"OpenRouter API error ({self.model}): {response.status_code} {response.text}")
 
-        data = response.json()
-        try:
-            return data["choices"][0]["message"]["content"]
-        except (KeyError, IndexError) as exc:
-            raise RuntimeError(f"Unexpected OpenRouter response shape: {data}") from exc
+    def _extract_text(self, data: dict) -> str:
+        return data["choices"][0]["message"]["content"]
 
 
-class GeminiAnalyzer:
+class GeminiAnalyzer(_HttpAnalyzer):
     """Google's Gemini API has a real, ongoing free tier (rate-limited,
     not a one-time trial) -- the last resort in build_free_analyzer()'s
     chain, after OpenRouter's free models."""
 
+    key_label = "Gemini"
+    api_key_env_var = "GEMINI_API_KEY"
+
     def __init__(self, model: str = DEFAULT_GEMINI_MODEL, api_key: str | None = None):
         self.model = model
-        self.api_key = api_key or os.environ.get("GEMINI_API_KEY", "")
+        super().__init__(api_key)
 
-    def analyze(self, entries: list[Entry]) -> AnalysisResult:
-        if not entries:
-            raise NoEntriesError("Cannot analyze an empty list of entries.")
-        if not self.api_key:
-            raise RuntimeError(
-                "No Gemini API key found. Set GEMINI_API_KEY or pass api_key= explicitly."
-            )
+    @property
+    def _label(self) -> str:
+        return f"Gemini ({self.model})"
 
-        response_text = self._call(_build_prompt(entries))
-        return _parse_response(response_text, len(entries), entries, f"Gemini ({self.model})")
-
-    def _call(self, prompt: str) -> str:
-        response = requests.post(
+    def _request(self, prompt: str):
+        return requests.post(
             f"https://generativelanguage.googleapis.com/v1beta/models/{self.model}:generateContent",
             params={"key": self.api_key},
             json={"contents": [{"parts": [{"text": prompt}]}]},
             timeout=60,
         )
-        if response.status_code == 429:
-            raise RateLimitError(f"Gemini rate limited: {response.text}")
-        if response.status_code != 200:
-            raise RuntimeError(f"Gemini API error: {response.status_code} {response.text}")
 
-        data = response.json()
-        try:
-            return data["candidates"][0]["content"]["parts"][0]["text"]
-        except (KeyError, IndexError) as exc:
-            raise RuntimeError(f"Unexpected Gemini response shape: {data}") from exc
+    def _extract_text(self, data: dict) -> str:
+        return data["candidates"][0]["content"]["parts"][0]["text"]
 
 
 class FallbackAnalyzer:

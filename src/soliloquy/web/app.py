@@ -25,7 +25,7 @@ from pathlib import Path
 from typing import Optional
 
 from fastapi import Depends, FastAPI, File, Form, HTTPException, Request, Response, UploadFile
-from fastapi.responses import HTMLResponse, PlainTextResponse, StreamingResponse
+from fastapi.responses import HTMLResponse, StreamingResponse
 from fastapi.templating import Jinja2Templates
 
 from ..actions import AUDIENCES, DEFAULT_DATABASE_URL, add_entry, list_entries, report_range
@@ -149,6 +149,15 @@ def _save_upload_to_temp(upload: UploadFile, default_suffix: str) -> str:
     return path
 
 
+def _upload_and_transcribe_audio(object_store: ObjectStore, audio_path: str) -> tuple[str, str]:
+    """Shared by post_audio_entry and post_video_entry (whose extracted
+    audio track goes through the exact same store-then-transcribe
+    step) -- returns (object storage key, transcript)."""
+    transcript = WhisperTranscriber().transcribe(audio_path)
+    key = object_store.upload_file(audio_path, f"audio/{uuid.uuid4()}{Path(audio_path).suffix}")
+    return key, transcript
+
+
 @app.get("/entries")
 def get_entries(store: EntryStore = Depends(get_store)):
     return [_entry_to_dict(e) for e in list_entries(store)]
@@ -168,9 +177,7 @@ def post_audio_entry(
 ):
     tmp_path = _save_upload_to_temp(file, ".wav")
     try:
-        transcript = WhisperTranscriber().transcribe(tmp_path)
-        suffix = Path(tmp_path).suffix
-        key = object_store.upload_file(tmp_path, f"audio/{uuid.uuid4()}{suffix}")
+        key, transcript = _upload_and_transcribe_audio(object_store, tmp_path)
     finally:
         os.remove(tmp_path)
 
@@ -201,8 +208,7 @@ def post_video_entry(
         except Exception as exc:
             raise HTTPException(status_code=422, detail=f"Could not extract audio from video: {exc}")
 
-        transcript = WhisperTranscriber().transcribe(audio_tmp_path)
-        audio_key = object_store.upload_file(audio_tmp_path, f"audio/{uuid.uuid4()}.wav")
+        audio_key, transcript = _upload_and_transcribe_audio(object_store, audio_tmp_path)
     finally:
         os.remove(video_tmp_path)
         if os.path.exists(audio_tmp_path):
@@ -255,11 +261,14 @@ def delete_entry(
     return {"ok": True}
 
 
-_REPORT_RENDERERS = {"text": format_text, "markdown": format_markdown, "html": format_html, "pdf": format_pdf}
-_REPORT_MEDIA_TYPES = {
-    "text": "text/plain", "markdown": "text/markdown", "html": "text/html", "pdf": "application/pdf",
+# (renderer, media type, file extension) per format -- one table
+# instead of three parallel dicts that could drift out of sync.
+_REPORT_FORMATS = {
+    "text": (format_text, "text/plain", "txt"),
+    "markdown": (format_markdown, "text/markdown", "md"),
+    "html": (format_html, "text/html", "html"),
+    "pdf": (format_pdf, "application/pdf", "pdf"),
 }
-_REPORT_EXTENSIONS = {"text": "txt", "markdown": "md", "html": "html", "pdf": "pdf"}
 
 
 @app.post("/reports")
@@ -287,12 +296,11 @@ def post_report(
         raise HTTPException(status_code=502, detail=str(exc))
 
     content = build_report_content(result, entries, audience, days)
-    body = _REPORT_RENDERERS[format](content)
-    filename = f"soliloquy-report.{_REPORT_EXTENSIONS[format]}"
+    render, media_type, extension = _REPORT_FORMATS[format]
     return Response(
-        content=body,
-        media_type=_REPORT_MEDIA_TYPES[format],
-        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+        content=render(content),
+        media_type=media_type,
+        headers={"Content-Disposition": f'attachment; filename="soliloquy-report.{extension}"'},
     )
 
 

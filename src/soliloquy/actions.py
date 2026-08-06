@@ -33,14 +33,17 @@ def list_entries(store: EntryStore) -> list[Entry]:
     return store.all()
 
 
+def _entries_in_last_days(store: EntryStore, days: int) -> list[Entry]:
+    end = datetime.now(timezone.utc)
+    start = end - timedelta(days=days)
+    return store.range_between(start, end)
+
+
 def analyze_range(store: EntryStore, analyzer: Analyzer, days: int) -> AnalysisResult:
     """Analyze the last `days` days of entries. Reuses EntryStore's
     range_between exactly as documented (see storage.py's module
     comment on why that method exists in the first place)."""
-    end = datetime.now(timezone.utc)
-    start = end - timedelta(days=days)
-    entries = store.range_between(start, end)
-    return analyzer.analyze(entries)
+    return analyzer.analyze(_entries_in_last_days(store, days))
 
 
 def report_range(store: EntryStore, analyzer: Analyzer, days: int, audience: str) -> tuple[AnalysisResult, list[Entry]]:
@@ -53,10 +56,7 @@ def report_range(store: EntryStore, analyzer: Analyzer, days: int, audience: str
     if audience not in AUDIENCES:
         raise ValueError(f"Unknown audience {audience!r}, must be one of {AUDIENCES}")
 
-    end = datetime.now(timezone.utc)
-    start = end - timedelta(days=days)
-    entries = store.range_between(start, end)
-
+    entries = _entries_in_last_days(store, days)
     if audience == "partner":
         entries = [e for e in entries if e.shareable_with_partner]
     elif audience == "provider":

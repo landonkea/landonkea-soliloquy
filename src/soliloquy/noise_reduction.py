@@ -9,10 +9,11 @@
 #      or steady-hiss filter, it also strips *irregular* noise (wind
 #      gusts, a dog barking, sheets moving, cars passing), which is
 #      what was actually asked for here.
-#   2. ffmpeg's speechnorm + alimiter -- levels out quiet vs loud
-#      entries and pushes the signal up to just under clipping, so
-#      recordings never come out too quiet to hear or so loud they
-#      distort, without the speaker having to raise their voice.
+#   2. ffmpeg's loudnorm + alimiter -- measures overall loudness (not
+#      just local peaks) and pushes the signal up to just under
+#      clipping, so recordings never come out too quiet to hear or so
+#      loud they distort, without the speaker having to raise their
+#      voice.
 #
 # DeepFilterNet (last released in 2023) imports a torchaudio symbol
 # that newer torchaudio releases removed, and does its own file I/O
@@ -94,12 +95,15 @@ def isolate_voice_and_normalize(input_path: str, output_path: str) -> None:
         enhanced = enhance(model, df_state, audio_t)
         sf.write(enhanced_path, enhanced.numpy().T, DF_SAMPLE_RATE)
 
-        # speechnorm adaptively brings quiet passages up (the "mic
-        # sensitivity" ask) and levels loud ones out; alimiter is a
-        # hard safety net so nothing ever actually clips.
+        # loudnorm measures overall integrated loudness (not just
+        # local peaks -- speechnorm was tried first, but a single loud
+        # transient like a breath or a plosive made it think the
+        # signal was already "loud enough" and barely boost the actual
+        # speech). alimiter is a hard safety net so nothing ever
+        # actually clips, on top of loudnorm's own TP target.
         run_ffmpeg([
             "-y", "-i", enhanced_path,
-            "-af", "speechnorm=e=12.5:r=0.0001:l=1,alimiter=limit=0.97",
+            "-af", "loudnorm=I=-11:TP=-0.3:LRA=7,alimiter=limit=0.97",
             "-ar", str(OUTPUT_SAMPLE_RATE), "-ac", "1",
             output_path,
         ])

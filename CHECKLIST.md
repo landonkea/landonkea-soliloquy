@@ -344,6 +344,27 @@ and the unrelated CRM/CMS + PWA project.
     better) on an actual recorded voice than on TTS audio. Worth a real test recording once you're
     using the app normally.
 
+## Extra: local automated backups ✅ done
+
+- [x] `scripts/backup.sh` — daily backup of both real data stores: `pg_dump` of Postgres (all
+      entries/transcripts/sharing flags) and a full `rclone copy` of the MinIO bucket (every
+      audio/video file), into a timestamped folder under `~/soliloquy-backups/`. Keeps the last 14
+      days, prunes older ones automatically each run.
+- [x] `~/Library/LaunchAgents/com.soliloquy.backup.plist` (not tracked — machine-specific, same
+      pattern as the mDNS/dnsmasq LaunchAgents) — runs the script daily at 3am via launchd. If the
+      Mac is asleep at 3am, launchd runs it as soon as the Mac next wakes, rather than skipping it.
+- [x] Verified for real: ran it against the actual live database and MinIO bucket, not a test
+      instance — produced a real `postgres.sql.gz` (containing an actual test entry, confirmed by
+      grepping the decompressed dump) and a real `minio-objects/` folder (230 real files, 5.9MB).
+- **Setup needed on any other machine this ever runs from** (not automatable from here): `brew
+  install rclone`, then an `rclone.conf` pointing at the local MinIO — see README's Backups
+  section for the exact config. Machine-specific credentials file, not tracked in git.
+- **What this does and doesn't protect against**: protects against accidental deletes, a bad
+  `DELETE`, or Docker/Postgres corruption — there's always a second copy on disk. Does **not**
+  protect against this Mac's disk itself failing, since both the original and the backup currently
+  live on the same physical disk. See README's Backups section for free offsite-redundancy options
+  to close that gap, and the tradeoffs between them.
+
 ## Right after this
 
 - [ ] Test the video-capture flow from a real phone (not just desktop browser + synthesized test

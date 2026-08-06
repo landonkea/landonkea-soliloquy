@@ -164,6 +164,55 @@ By default the app points at the local docker-compose Postgres
 the `DATABASE_URL`/`S3_*`/`MQTT_*` environment variables to point at anything else, including a
 managed cloud database later. See `.env.example` for the full list.
 
+## Backups
+
+`scripts/backup.sh` runs daily (3am, via a LaunchAgent) and copies both real data stores —
+`pg_dump` of Postgres, `rclone copy` of the entire MinIO bucket — into a timestamped folder under
+`~/soliloquy-backups/`, keeping the last 14 days. One-time setup on any machine this runs from:
+
+```bash
+brew install rclone
+mkdir -p ~/.config/rclone
+cat > ~/.config/rclone/rclone.conf <<'EOF'
+[soliloquy-minio]
+type = s3
+provider = Minio
+env_auth = false
+access_key_id = soliloquy
+secret_access_key = soliloquy123
+endpoint = http://localhost:9000
+EOF
+chmod 600 ~/.config/rclone/rclone.conf
+```
+
+**This is a local backup — a second copy on the same disk as the original.** It protects against
+an accidental delete or a Docker/Postgres problem, but not against this Mac's disk itself failing,
+since both copies live on the same disk today.
+
+### Free offsite redundancy (optional, not set up yet)
+
+To actually protect against this machine dying, a copy needs to leave it. Recommended approach —
+[restic](https://restic.net) (open source, encrypts everything client-side before it ever leaves
+this Mac, since journal entries are the kind of personal content that shouldn't sit unencrypted in
+someone else's cloud bucket) pointed at one of:
+
+- **Cloudflare R2** — 10GB storage free, and critically, **zero egress fees** (most providers
+  charge to download your own data back out, which matters if you ever need to actually restore).
+  The best free option if a restore is ever tested for real.
+- **Backblaze B2** — 10GB storage free, small egress fees beyond a modest daily allowance. Very
+  well-documented pairing with `restic`.
+
+Both free tiers cap around 10GB. That's comfortable for entries + audio for a long time, but video
+will eat into it fast — a handful of video journal entries can be tens of MB each. **There isn't a
+genuinely free option once video volume grows past that**; every provider's free tier tops out
+in the 10–25GB range. At real scale, the cheapest paths are Backblaze B2 (~$6/TB/month) or a
+second physical external drive kept at a different location (one-time cost, no ongoing fee, but
+needs manually swapping/updating rather than running automatically).
+
+Not implemented yet — creating an account on either service isn't something that can be done on
+your behalf. Once you've picked one and created an account, share the credentials as environment
+variables and this can be wired into `backup.sh` as an additional step.
+
 ## Running tests
 
 Tests run against real local Postgres + MinIO (via `docker compose up -d`), not mocks — create

@@ -16,6 +16,14 @@
         {% endfor %}
       </select>
     </label>
+    <label>Format
+      <select name="format">
+        <option value="text">Plain text (.txt)</option>
+        <option value="markdown">Markdown (.md)</option>
+        <option value="html">HTML page (.html)</option>
+        <option value="pdf">PDF (.pdf)</option>
+      </select>
+    </label>
     <button type="submit">Generate</button>
     <div class="status" id="report-status"></div>
   </form>
@@ -27,6 +35,8 @@
     const statusEl = document.getElementById("report-status");
     const outputEl = document.getElementById("report-output");
 
+    const EXTENSIONS = { text: "txt", markdown: "md", html: "html", pdf: "pdf" };
+
     form.addEventListener("submit", async (event) => {
       event.preventDefault();
       statusEl.textContent = "Generating (this calls Claude, may take a few seconds)...";
@@ -34,6 +44,7 @@
       outputEl.innerHTML = "";
 
       const body = new FormData(form);
+      const format = body.get("format");
       const response = await fetch("/reports", { method: "POST", body });
 
       if (!response.ok) {
@@ -43,23 +54,41 @@
         return;
       }
 
-      const text = await response.text();
-
       statusEl.textContent = "Done.";
       statusEl.className = "status ok";
 
-      const pre = document.createElement("pre");
-      pre.className = "report";
-      pre.textContent = text;
+      const blob = await response.blob();
+      const url = URL.createObjectURL(blob);
 
-      const blob = new Blob([text], { type: "text/plain" });
       const link = document.createElement("a");
-      link.href = URL.createObjectURL(blob);
-      link.download = "soliloquy-report.txt";
-      link.textContent = "Download report";
-
+      link.href = url;
+      link.download = `soliloquy-report.${EXTENSIONS[format]}`;
+      link.textContent = `Download report (.${EXTENSIONS[format]})`;
       outputEl.appendChild(link);
-      outputEl.appendChild(pre);
+
+      if (format === "text" || format === "markdown") {
+        const pre = document.createElement("pre");
+        pre.className = "report";
+        pre.textContent = await blob.text();
+        outputEl.appendChild(pre);
+      } else if (format === "html") {
+        const iframe = document.createElement("iframe");
+        iframe.src = url;
+        iframe.style.width = "100%";
+        iframe.style.height = "500px";
+        iframe.style.border = "1px solid #ddd";
+        iframe.style.borderRadius = "8px";
+        iframe.style.marginTop = "1rem";
+        outputEl.appendChild(iframe);
+      } else if (format === "pdf") {
+        const embed = document.createElement("embed");
+        embed.src = url;
+        embed.type = "application/pdf";
+        embed.style.width = "100%";
+        embed.style.height = "500px";
+        embed.style.marginTop = "1rem";
+        outputEl.appendChild(embed);
+      }
     });
   </script>
 {% endblock %}

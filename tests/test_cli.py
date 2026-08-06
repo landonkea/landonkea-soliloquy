@@ -1,5 +1,6 @@
 import os
 from datetime import datetime, timedelta, timezone
+from unittest.mock import MagicMock, patch
 
 import pytest
 
@@ -274,3 +275,50 @@ def test_share_command_returns_nonzero_when_no_flags_are_passed():
     exit_code = main(["--db", db_path, "share", entry.id])
 
     assert exit_code == 1
+
+
+# ── `report --format` CLI command ────────────────────────────────────
+
+def _fake_claude_response():
+    fake = MagicMock()
+    fake.status_code = 200
+    fake.json.return_value = {
+        "content": [{"text": '{"summary": "s", "mood_notes": "m", "key_topics": ["t"]}'}]
+    }
+    return fake
+
+
+def test_report_command_requires_output_for_pdf_format(monkeypatch):
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "fake-key-not-used")
+    exit_code = main(["--db", TEST_DATABASE_URL, "report", "--format", "pdf"])
+    assert exit_code == 1
+
+
+def test_report_command_writes_the_requested_format_to_output(tmp_path, monkeypatch):
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "fake-key-not-used")
+    with EntryStore(TEST_DATABASE_URL) as store:
+        add_entry(store, "an entry to analyze")
+    output_path = tmp_path / "report.md"
+
+    with patch("requests.post", return_value=_fake_claude_response()):
+        exit_code = main([
+            "--db", TEST_DATABASE_URL, "report", "--format", "markdown", "--output", str(output_path),
+        ])
+
+    assert exit_code == 0
+    assert output_path.read_text().startswith("# Soliloquy report")
+
+
+def test_report_command_writes_real_pdf_bytes_to_output(tmp_path, monkeypatch):
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "fake-key-not-used")
+    with EntryStore(TEST_DATABASE_URL) as store:
+        add_entry(store, "an entry to analyze")
+    output_path = tmp_path / "report.pdf"
+
+    with patch("requests.post", return_value=_fake_claude_response()):
+        exit_code = main([
+            "--db", TEST_DATABASE_URL, "report", "--format", "pdf", "--output", str(output_path),
+        ])
+
+    assert exit_code == 0
+    assert output_path.read_bytes().startswith(b"%PDF")

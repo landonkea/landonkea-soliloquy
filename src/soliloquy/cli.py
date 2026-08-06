@@ -19,6 +19,7 @@ from pathlib import Path
 
 from .analyzer import Analyzer, AnalysisResult
 from .entry import Entry
+from .report import FORMATS, build_report_content, format_html, format_markdown, format_pdf, format_text
 from .storage import EntryStore
 from .transcriber import Transcriber
 
@@ -91,30 +92,11 @@ def report_range(store: EntryStore, analyzer: Analyzer, days: int, audience: str
 
 
 def format_report(result: AnalysisResult, entries: list[Entry], audience: str, days: int) -> str:
-    """A readable, shareable write-up -- the actual point of `report`
-    over `analyze` (which is a quick self-facing terminal glance)."""
-    lines = [
-        f"Soliloquy report -- last {days} days -- audience: {audience}",
-        f"{result.entry_count} entries, {result.total_word_count} words",
-        "",
-        "Summary",
-        "-------",
-        result.summary,
-        "",
-        "Mood",
-        "----",
-        result.mood_notes,
-        "",
-        "Key topics",
-        "----------",
-        ", ".join(result.key_topics) if result.key_topics else "(none noted)",
-        "",
-        "Entries",
-        "-------",
-    ]
-    for entry in entries:
-        lines.append(f"[{entry.created_at.isoformat()}] {entry.transcript}")
-    return "\n".join(lines) + "\n"
+    """A readable, shareable write-up in plain text -- the actual point
+    of `report` over `analyze` (which is a quick self-facing terminal
+    glance). See report.py for markdown/html/pdf renderings of the
+    same content, all built from the same ReportContent."""
+    return format_text(build_report_content(result, entries, audience, days))
 
 
 def record_entry(recordings_dir: str = "recordings") -> str:
@@ -195,6 +177,9 @@ def main(argv: list[str] | None = None) -> int:
     report_parser.add_argument("--audience", choices=AUDIENCES, default="self",
                                 help="Who this report is for -- 'self' sees everything; "
                                      "'partner'/'provider' only see entries explicitly shared with them.")
+    report_parser.add_argument("--format", choices=FORMATS, default="text",
+                                help="Report format (default: text). 'pdf' requires --output, "
+                                     "since PDF bytes can't be printed to a terminal.")
     report_parser.add_argument("--output", help="Write the report to this file instead of printing it.")
 
     args = parser.parse_args(argv)
@@ -244,17 +229,25 @@ def main(argv: list[str] | None = None) -> int:
             print(f"Updated sharing for entry {args.entry_id}.")
         elif args.command == "report":
             from .analyzer import ClaudeAnalyzer, NoEntriesError
+            if args.format == "pdf" and not args.output:
+                print("--format pdf requires --output <file.pdf> -- PDF bytes can't be printed to a terminal.")
+                return 1
             try:
                 result, entries = report_range(store, ClaudeAnalyzer(), args.days, args.audience)
             except NoEntriesError:
                 print(f"No entries for audience '{args.audience}' in the last {args.days} days.")
                 return 0
-            report_text = format_report(result, entries, args.audience, args.days)
+            content = build_report_content(result, entries, args.audience, args.days)
+            renderer = {"text": format_text, "markdown": format_markdown, "html": format_html, "pdf": format_pdf}[args.format]
+            report_output = renderer(content)
             if args.output:
-                Path(args.output).write_text(report_text)
+                if args.format == "pdf":
+                    Path(args.output).write_bytes(report_output)
+                else:
+                    Path(args.output).write_text(report_output)
                 print(f"Wrote report to {args.output}")
             else:
-                print(report_text)
+                print(report_output)
     return 0
 
 

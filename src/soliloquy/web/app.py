@@ -22,14 +22,15 @@ import uuid
 from pathlib import Path
 from typing import Optional
 
-from fastapi import Depends, FastAPI, File, Form, HTTPException, Request, UploadFile
+from fastapi import Depends, FastAPI, File, Form, HTTPException, Request, Response, UploadFile
 from fastapi.responses import HTMLResponse, PlainTextResponse, StreamingResponse
 from fastapi.templating import Jinja2Templates
 
 from ..analyzer import ClaudeAnalyzer, NoEntriesError
-from ..cli import AUDIENCES, DEFAULT_DATABASE_URL, add_entry, format_report, list_entries, report_range
+from ..cli import AUDIENCES, DEFAULT_DATABASE_URL, add_entry, list_entries, report_range
 from ..entry import Entry
 from ..object_storage import ObjectStore
+from ..report import FORMATS, build_report_content, format_html, format_markdown, format_pdf, format_text
 from ..storage import EntryStore
 from ..transcriber import WhisperTranscriber
 from ..video import extract_audio
@@ -165,14 +166,24 @@ def share_entry(
     return _entry_to_dict(store.get(entry_id))
 
 
+_REPORT_RENDERERS = {"text": format_text, "markdown": format_markdown, "html": format_html, "pdf": format_pdf}
+_REPORT_MEDIA_TYPES = {
+    "text": "text/plain", "markdown": "text/markdown", "html": "text/html", "pdf": "application/pdf",
+}
+_REPORT_EXTENSIONS = {"text": "txt", "markdown": "md", "html": "html", "pdf": "pdf"}
+
+
 @app.post("/reports")
 def post_report(
     days: int = Form(7),
     audience: str = Form("self"),
+    format: str = Form("text"),
     store: EntryStore = Depends(get_store),
 ):
     if audience not in AUDIENCES:
         raise HTTPException(status_code=400, detail=f"Unknown audience {audience!r}, must be one of {AUDIENCES}")
+    if format not in FORMATS:
+        raise HTTPException(status_code=400, detail=f"Unknown format {format!r}, must be one of {FORMATS}")
     try:
         result, entries = report_range(store, ClaudeAnalyzer(), days, audience)
     except NoEntriesError:
@@ -185,7 +196,15 @@ def post_report(
         # generic 500, so "you forgot to set ANTHROPIC_API_KEY" is
         # actually visible instead of an opaque Internal Server Error.
         raise HTTPException(status_code=502, detail=str(exc))
-    return PlainTextResponse(format_report(result, entries, audience, days))
+
+    content = build_report_content(result, entries, audience, days)
+    body = _REPORT_RENDERERS[format](content)
+    filename = f"soliloquy-report.{_REPORT_EXTENSIONS[format]}"
+    return Response(
+        content=body,
+        media_type=_REPORT_MEDIA_TYPES[format],
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
 
 
 @app.get("/media/{key:path}")

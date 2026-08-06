@@ -74,8 +74,16 @@ fact — the recording is the whole interaction.
   full transcripts) built from ONLY the entries marked for that audience — critically, the
   filtering happens before entries ever reach the analyzer, so a private entry can't leak into
   the AI-generated summary text even indirectly. `--audience self` (the default) includes
-  everything, for your own review. Add `--output some-file.md` to write the report to a file
+  everything, for your own review. Add `--output some-file` to write the report to a file
   instead of the terminal, for actually handing it to someone.
+- **Report export formats** (`--format text|markdown|html|pdf`, both CLI and the web app's Report
+  page) — the same `ReportContent` (see `src/soliloquy/report.py`) rendered four ways: plain text
+  (the original, terminal-friendly), real Markdown (renders nicely on GitHub/Obsidian/Notion,
+  proper headings instead of plain-text underlines), a self-contained HTML page, and a PDF (via
+  `fpdf2`, no system-level dependencies) — the most natural format for actually handing to a
+  therapist or printing. `pdf` requires `--output <file>` on the CLI since PDF bytes can't be
+  printed to a terminal; the web app always offers a download link regardless of format, plus an
+  inline preview for text/markdown/html and an embedded PDF viewer.
 
 **Next:** see `CHECKLIST.md` for status — Postgres/MinIO storage, the FastAPI backend, video
 capture, and the web GUI are all done; what's next is testing the video flow from a real phone

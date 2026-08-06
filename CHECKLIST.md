@@ -66,6 +66,18 @@ Out of scope for now (confirmed with the user, not forgotten): the MQTT bridge t
       real (video upload has only been verified with a synthesized test clip + `curl` so far, not
       a real phone recording through the actual page)
 
+## Extra: report export formats ✅ done
+
+- [x] `src/soliloquy/report.py` — one shared `ReportContent`, rendered four ways:
+      `format_text`, `format_markdown`, `format_html`, `format_pdf` (via `fpdf2`, no system deps)
+- [x] CLI: `soliloquy report --format text|markdown|html|pdf` (`pdf` requires `--output`)
+- [x] Web: Report page has a Format selector; download link + inline preview (text/markdown show
+      as `<pre>`, html previews in an iframe, pdf previews in an embedded viewer) for all four
+- [x] Real bug caught and fixed during this: `fpdf2`'s `multi_cell` needs the cursor reset to the
+      left margin after each cell (`new_x=XPos.LMARGIN, new_y=YPos.NEXT`) or the next cell's width
+      calculation can hit zero and crash — found by actually generating a PDF, not just writing
+      the code
+
 ## Right after this
 
 - [ ] Test the video-capture flow from a real phone (not just desktop browser + synthesized test

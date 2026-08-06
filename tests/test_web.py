@@ -111,6 +111,47 @@ def test_report_returns_a_clear_502_when_no_api_key_is_configured(client, monkey
     assert "API key" in response.json()["detail"]
 
 
+def test_report_returns_400_for_an_unknown_format(client, monkeypatch):
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "fake-key-not-used")
+    client.post("/entries", data={"text": "an entry"})
+
+    response = client.post("/reports", data={"days": 7, "audience": "self", "format": "pptx"})
+
+    assert response.status_code == 400
+
+
+def _fake_claude_response():
+    fake = MagicMock()
+    fake.status_code = 200
+    fake.json.return_value = {
+        "content": [{"text": '{"summary": "s", "mood_notes": "m", "key_topics": ["t"]}'}]
+    }
+    return fake
+
+
+@pytest.mark.parametrize(
+    "format,content_type,magic",
+    [
+        ("text", "text/plain", b""),
+        ("markdown", "text/markdown", b""),
+        ("html", "text/html", b"<!doctype html"),
+        ("pdf", "application/pdf", b"%PDF"),
+    ],
+)
+def test_report_returns_the_requested_format(client, monkeypatch, format, content_type, magic):
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "fake-key-not-used")
+    client.post("/entries", data={"text": "an entry to analyze"})
+
+    with patch("requests.post", return_value=_fake_claude_response()):
+        response = client.post("/reports", data={"days": 7, "audience": "self", "format": format})
+
+    assert response.status_code == 200
+    assert response.headers["content-type"].startswith(content_type)
+    assert f'filename="soliloquy-report.{ {"text": "txt", "markdown": "md", "html": "html", "pdf": "pdf"}[format] }"' in response.headers["content-disposition"]
+    if magic:
+        assert response.content.startswith(magic)
+
+
 def _install_fake_faster_whisper(segment_texts: list[str]):
     # Same technique as test_transcriber.py -- faster-whisper isn't
     # installed in CI (it needs a real model download on first use),

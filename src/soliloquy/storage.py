@@ -39,10 +39,18 @@ CREATE INDEX IF NOT EXISTS idx_entries_created_at ON entries (created_at);
 class EntryStore:
     def __init__(self, db_path: str = "soliloquy.db"):
         self.db_path = db_path
-        Path(db_path).parent.mkdir(parents=True, exist_ok=True) if Path(db_path).parent != Path(".") else None
+        parent_dir = Path(db_path).parent
+        if parent_dir != Path("."):
+            parent_dir.mkdir(parents=True, exist_ok=True)
         self._conn = sqlite3.connect(db_path)
         self._conn.executescript(SCHEMA)
         self._conn.commit()
+
+    def __enter__(self) -> "EntryStore":
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb) -> None:
+        self.close()
 
     def add(self, entry: Entry) -> None:
         self._conn.execute(

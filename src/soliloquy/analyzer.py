@@ -19,6 +19,8 @@ import os
 from dataclasses import dataclass
 from typing import Protocol
 
+import requests
+
 from .entry import Entry
 
 CLAUDE_MODEL = "claude-sonnet-5"
@@ -88,8 +90,6 @@ class ClaudeAnalyzer:
         )
 
     def _call_claude(self, prompt: str) -> str:
-        import requests
-
         response = requests.post(
             "https://api.anthropic.com/v1/messages",
             headers={

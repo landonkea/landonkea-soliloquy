@@ -1,3 +1,4 @@
+import sqlite3
 from datetime import datetime, timedelta, timezone
 
 import pytest
@@ -92,3 +93,27 @@ def test_a_fresh_db_file_is_created_and_usable(tmp_path):
         assert len(store.all()) == 1
     finally:
         store.close()
+
+
+def test_entrystore_works_as_a_context_manager(tmp_path):
+    db_path = str(tmp_path / "test.db")
+    with EntryStore(db_path) as store:
+        store.add(Entry(transcript="via context manager"))
+        assert len(store.all()) == 1
+
+    # The connection should be closed after the `with` block -- confirm
+    # by checking further use raises, rather than just trusting close()
+    # was called.
+    with pytest.raises(sqlite3.ProgrammingError):
+        store.all()
+
+
+def test_entrystore_closes_even_if_an_exception_is_raised_inside_the_with_block(tmp_path):
+    db_path = str(tmp_path / "test.db")
+    with pytest.raises(ValueError):
+        with EntryStore(db_path) as store:
+            store.add(Entry(transcript="before the exception"))
+            raise ValueError("simulated failure")
+
+    with pytest.raises(sqlite3.ProgrammingError):
+        store.all()

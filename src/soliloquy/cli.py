@@ -38,6 +38,16 @@ def add_entry_from_audio(store: EntryStore, transcriber: Transcriber, audio_path
     return entry
 
 
+def _transcribe_and_print(store: EntryStore, audio_path: str) -> None:
+    """Shared by the `record --transcribe` and `transcribe` CLI paths —
+    both end up doing exactly this, just from a different audio source."""
+    from .transcriber import WhisperTranscriber  # deferred: keeps `add`/`list`/`record` (no --transcribe) free of the faster-whisper dependency
+
+    print("Transcribing...")
+    entry = add_entry_from_audio(store, WhisperTranscriber(), audio_path)
+    print(f"Saved entry {entry.id}: \"{entry.transcript}\"")
+
+
 def list_entries(store: EntryStore) -> list[Entry]:
     return store.all()
 
@@ -119,22 +129,15 @@ def main(argv: list[str] | None = None) -> int:
         record_entry(args.dir)
         return 0
 
-    store = EntryStore(args.db)
-    try:
+    with EntryStore(args.db) as store:
         if args.command == "add":
             entry = add_entry(store, args.text)
             print(f"Saved entry {entry.id} ({entry.word_count} words) at {entry.created_at.isoformat()}")
         elif args.command == "record":
             audio_path = record_entry(args.dir)
-            from .transcriber import WhisperTranscriber
-            print("Transcribing...")
-            entry = add_entry_from_audio(store, WhisperTranscriber(), audio_path)
-            print(f"Saved entry {entry.id}: \"{entry.transcript}\"")
+            _transcribe_and_print(store, audio_path)
         elif args.command == "transcribe":
-            from .transcriber import WhisperTranscriber
-            print("Transcribing...")
-            entry = add_entry_from_audio(store, WhisperTranscriber(), args.audio_path)
-            print(f"Saved entry {entry.id}: \"{entry.transcript}\"")
+            _transcribe_and_print(store, args.audio_path)
         elif args.command == "list":
             entries = list_entries(store)
             if not entries:
@@ -152,8 +155,6 @@ def main(argv: list[str] | None = None) -> int:
             print(f"Summary: {result.summary}\n")
             print(f"Mood: {result.mood_notes}\n")
             print(f"Key topics: {', '.join(result.key_topics)}")
-    finally:
-        store.close()
     return 0
 
 

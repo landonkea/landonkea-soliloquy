@@ -38,15 +38,18 @@ Out of scope for now (confirmed with the user, not forgotten): the MQTT bridge t
 - [x] Tested with FastAPI's `TestClient` against real Postgres + MinIO (8 tests); manually
       smoke-tested against a real running server with `curl`
 
-## Stage 3 — Video capture
+## Stage 3 — Video capture ✅ done
 
-- [ ] `src/soliloquy/video.py` — `extract_audio()` via `ffmpeg`, same "wrap a real external tool"
+- [x] `src/soliloquy/video.py` — `extract_audio()` via `ffmpeg`, same "wrap a real external tool"
       pattern as `recorder.py`'s `pyaudio` use
-- [ ] Tested against a real synthesized test video (ffmpeg's own `lavfi` test source), not just
-      mocks
-- [ ] `POST /entries/video` route: upload video → store in object storage → extract audio → store
+- [x] Tested against a real synthesized test video (ffmpeg's own `lavfi` test source), not just
+      mocks (3 tests) — plus an end-to-end test of the upload route against real Postgres + MinIO
+- [x] `POST /entries/video` route: upload video → store in object storage → extract audio → store
       that too → transcribe → create an `Entry` with both `video_path` and `audio_path` set
-- [ ] Verified against a real phone-recorded video file, not just the synthetic CI fixture
+- [x] Verified against a real running server with `curl` (real ffmpeg extraction, real object
+      storage round trip for both files). **Not yet verified against an actual phone-recorded
+      video file** — only a synthesized test clip so far; worth doing once stage 4's upload page
+      exists to test from an actual phone.
 
 ## Stage 4 — Web GUI
 

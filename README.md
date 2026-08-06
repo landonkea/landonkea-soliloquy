@@ -102,6 +102,11 @@ pip install -e ".[dev,audio,transcribe]"       # adds faster-whisper, needed for
 python -m soliloquy.cli record --transcribe    # record, then transcribe, then save as an entry
 python -m soliloquy.cli transcribe some-file.wav   # or transcribe an existing recording
 
+# Video entries also need the ffmpeg binary on PATH (used to extract the
+# audio track): macOS `brew install ffmpeg`. No extra Python package needed.
+pip install -e ".[dev,web]"
+python -m soliloquy.web                        # runs the web app (see /entries/video)
+
 export ANTHROPIC_API_KEY=sk-ant-...
 python -m soliloquy.cli analyze --days 7           # analyze the last week's entries
 

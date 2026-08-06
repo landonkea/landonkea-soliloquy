@@ -31,6 +31,7 @@ from ..entry import Entry
 from ..object_storage import ObjectStore
 from ..storage import EntryStore
 from ..transcriber import WhisperTranscriber
+from ..video import extract_audio
 
 app = FastAPI(title="Soliloquy")
 
@@ -109,6 +110,40 @@ def post_audio_entry(
         os.remove(tmp_path)
 
     entry = Entry(transcript=transcript, audio_path=key)
+    store.add(entry)
+    return _entry_to_dict(entry)
+
+
+@app.post("/entries/video")
+def post_video_entry(
+    file: UploadFile = File(...),
+    store: EntryStore = Depends(get_store),
+    object_store: ObjectStore = Depends(get_object_store),
+):
+    """Upload video -> store the video as-is -> extract its audio track
+    -> store that too -> transcribe the extracted audio. The Entry ends
+    up with BOTH video_path and audio_path set, so the existing
+    transcript/analysis pipeline works completely unchanged (it only
+    ever reads the transcript), and a future face/expression analyzer
+    can consume video_path independently -- see entry.py's docstring."""
+    video_tmp_path = _save_upload_to_temp(file, ".mp4")
+    audio_tmp_path = video_tmp_path + ".wav"
+    try:
+        video_key = object_store.upload_file(video_tmp_path, f"video/{uuid.uuid4()}{Path(video_tmp_path).suffix}")
+
+        try:
+            extract_audio(video_tmp_path, audio_tmp_path)
+        except Exception as exc:
+            raise HTTPException(status_code=422, detail=f"Could not extract audio from video: {exc}")
+
+        transcript = WhisperTranscriber().transcribe(audio_tmp_path)
+        audio_key = object_store.upload_file(audio_tmp_path, f"audio/{uuid.uuid4()}.wav")
+    finally:
+        os.remove(video_tmp_path)
+        if os.path.exists(audio_tmp_path):
+            os.remove(audio_tmp_path)
+
+    entry = Entry(transcript=transcript, audio_path=audio_key, video_path=video_key)
     store.add(entry)
     return _entry_to_dict(entry)
 

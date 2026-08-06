@@ -1,4 +1,5 @@
 import os
+import subprocess
 import sys
 import wave
 from types import ModuleType
@@ -131,3 +132,38 @@ def test_post_audio_entry_transcribes_and_stores_a_real_audio_key(client):
     response = client.get(f"/media/{body['audio_path']}")
     assert response.status_code == 200
     assert response.content == _silent_wav_bytes()
+
+
+def _synthesize_test_video(path: str, duration: float = 1.0) -> None:
+    subprocess.run(
+        [
+            "ffmpeg", "-y",
+            "-f", "lavfi", "-i", f"testsrc=duration={duration}:size=64x64:rate=10",
+            "-f", "lavfi", "-i", f"sine=frequency=440:duration={duration}",
+            "-c:v", "libx264", "-c:a", "aac", "-shortest", path,
+        ],
+        check=True,
+        capture_output=True,
+    )
+
+
+def test_post_video_entry_stores_video_and_audio_and_transcribes(client, tmp_path):
+    video_path = tmp_path / "entry.mp4"
+    _synthesize_test_video(str(video_path))
+    fake_module = _install_fake_faster_whisper([" transcribed from video "])
+
+    with patch.dict(sys.modules, {"faster_whisper": fake_module}):
+        with open(video_path, "rb") as f:
+            response = client.post(
+                "/entries/video", files={"file": ("entry.mp4", f.read(), "video/mp4")}
+            )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["video_path"].startswith("video/")
+    assert body["audio_path"].startswith("audio/")
+    assert body["transcript"] == "transcribed from video"
+
+    # Both files really made it to object storage.
+    assert client.get(f"/media/{body['video_path']}").status_code == 200
+    assert client.get(f"/media/{body['audio_path']}").status_code == 200

@@ -212,6 +212,27 @@ and the unrelated CRM/CMS + PWA project.
       failure that turned out to be concurrent testing (the user testing live on their own device
       at the same time as this session) rather than a real bug — confirmed via server logs.
 
+## Extra: `soliloquy.internal` LAN name, self-healing against IP changes ✅ done
+
+- [x] `dnsmasq` installed via Homebrew, running as a system service (`sudo brew services start
+      dnsmasq`) — `/opt/homebrew/etc/dnsmasq.conf` resolves `soliloquy.internal` to this Mac's
+      LAN IP, forwards everything else normally. `.internal` specifically (not `.local`, not a
+      real TLD like `.com`) — reserved (RFC 9476) for exactly this: a private name that will
+      never collide with, or be mistaken for, a real public domain.
+- [x] `scripts/update-soliloquy-dns.sh` — since the LAN IP is DHCP-assigned and changes every few
+      hours/days, this detects the *current* IP and rewrites/reloads dnsmasq only when it's
+      actually different from what's configured (a no-op otherwise). Runs automatically every 5
+      minutes via a LaunchAgent (`~/Library/LaunchAgents/com.soliloquy.dns-update.plist`, not
+      tracked in the repo since it's machine-specific — the script it calls is).
+- [x] Verified for real, twice: manually forced a wrong IP into the config and confirmed the
+      script corrected it, then did it again and confirmed the LaunchAgent caught it *on its own*
+      via `launchctl kickstart` (not a manual script run) — the self-healing actually self-heals.
+- **Remaining manual step, can't be done for you**: point each phone/device's WiFi DNS setting at
+  this Mac's IP (Settings → WiFi → network details → DNS → Manual) so it actually uses dnsmasq to
+  resolve `soliloquy.internal` — requires the device's own settings, not something scriptable
+  from here. Router-level DHCP config (to make this automatic for every device on the LAN) would
+  need router admin access, which wasn't available in this session.
+
 ## Right after this
 
 - [ ] Test the video-capture flow from a real phone (not just desktop browser + synthesized test

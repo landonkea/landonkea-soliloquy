@@ -12,18 +12,25 @@ fact — the recording is the whole interaction.
 ## Architecture
 
 ```
-   record (mic)  →  transcribe (speech-to-text)  →  Entry  →  storage (SQLite)  →  analysis
+   record (mic/camera)  →  transcribe  →  Entry  →  Postgres + object storage  →  analysis
 ```
 
 - **`Entry`** (`src/soliloquy/entry.py`) — the one thing every other piece produces or consumes:
-  a transcript, a timestamp, an optional path to the original audio. Nothing else in this app
+  a transcript, a timestamp, optional paths to the original audio/video. Nothing else in this app
   needs to know how an `Entry` was created.
-- **`EntryStore`** (`src/soliloquy/storage.py`) — SQLite-backed storage, with a
-  `range_between(start, end)` query built in from day one, because per-day/week/month analysis
-  is just different `(start, end)` windows over the same query.
+- **`EntryStore`** (`src/soliloquy/storage.py`) — Postgres-backed storage (via `psycopg`), driven
+  by a `DATABASE_URL` connection string, with a `range_between(start, end)` query built in from
+  day one, because per-day/week/month analysis is just different `(start, end)` windows over the
+  same query.
+- **`ObjectStore`** (`src/soliloquy/object_storage.py`) — S3-compatible object storage (via
+  `boto3`) for audio/video files. Raw media never lives inside Postgres. Points at self-hosted
+  MinIO today; pointing it at Cloudflare R2 (or real S3) later is a config change, not a rewrite,
+  since both speak the same S3 API boto3 already uses.
 - **Recording** (`src/soliloquy/recorder.py`) + **transcription** (`src/soliloquy/transcriber.py`)
   — both built, see "What's built vs. what's next" below.
 - **Analysis** (`src/soliloquy/analyzer.py`) — built, see "What's built vs. what's next" below.
+- **CLI** (`src/soliloquy/cli.py`) and a **web app** (`src/soliloquy/web/`, in progress — see
+  `CHECKLIST.md`) both sit on top of the same package above; neither duplicates the other's logic.
 
 ## What's built vs. what's next
 
@@ -70,13 +77,8 @@ fact — the recording is the whole interaction.
   everything, for your own review. Add `--output some-file.md` to write the report to a file
   instead of the terminal, for actually handing it to someone.
 
-**Next, in order:**
-1. **Storage migration** — SQLite works for local proof-of-concept; the plan once this works
-   end-to-end is Postgres (transcripts/metadata/analysis — free managed tier, e.g. Supabase or
-   Neon) + object storage for audio specifically (e.g. Cloudflare R2 — no egress fees, matters
-   if audio is ever streamed/shared back out). Raw audio should never live inside the database
-   itself, free tier or not. `EntryStore`'s interface is already designed so this is a backend
-   swap, not a rewrite.
+**Next:** see `CHECKLIST.md` for the current build-out (Postgres/MinIO storage — done; FastAPI
+backend + web GUI + video capture — in progress) and what's after that.
 
 **A future integration point, not built yet:** `landonkea-thinkLessScheduleMore`'s automation
 engine (`AutomationAction`/`AutomationRegistry`) makes "record a journal entry" a natural
@@ -87,7 +89,8 @@ plugs into the rest of the ecosystem, not a dependency for anything built so far
 ## Quick start
 
 ```bash
-pip install -e ".[dev]"                       # text-only (add/list), no audio deps
+docker compose up -d                           # starts local Postgres (port 5433) + MinIO (port 9000)
+pip install -e ".[dev]"
 python -m soliloquy.cli add "First entry, typed for now."
 python -m soliloquy.cli list
 
@@ -108,8 +111,20 @@ python -m soliloquy.cli report --days 30 --audience partner --output partner-rep
 python -m soliloquy.cli report --days 30 --audience provider --output provider-report.md
 ```
 
+By default the CLI points at the local docker-compose Postgres
+(`postgresql://soliloquy:soliloquy@localhost:5433/soliloquy`) and MinIO
+(`http://localhost:9000`, bucket `soliloquy`) — override with the `DATABASE_URL`/`S3_*`
+environment variables (or `--db`) to point at anything else, including a managed cloud database
+later.
+
 ## Running tests
 
+Tests run against a real local Postgres + MinIO (via `docker compose up -d`), not mocks — create
+the one-time test database first:
+
 ```bash
+docker compose up -d
+psql postgresql://soliloquy:soliloquy@localhost:5433/soliloquy -c "CREATE DATABASE soliloquy_test"
+pip install -e ".[dev,web]"
 pytest -v
 ```

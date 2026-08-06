@@ -11,6 +11,14 @@
 # needing a microphone or a transcription model set up yet — see
 # README.md's "What's built vs. what's next" section.
 #
+# video_path is Optional and independent of audio_path -- a video
+# entry always has BOTH set (the extracted audio track is stored and
+# transcribed exactly like a standalone audio entry, see video.py),
+# but audio-only and text-only entries never have a video_path. This
+# is what lets face/expression analysis be added later as a new
+# consumer of video_path without touching the transcript/analysis
+# pipeline, which only ever needs the transcript.
+#
 # shareable_with_partner / shareable_with_provider: two INDEPENDENT
 # flags, not one "privacy level" -- a partner and a therapist are
 # genuinely different audiences, not points on the same spectrum
@@ -36,6 +44,7 @@ class Entry:
     transcript: str
     created_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
     audio_path: Optional[str] = None
+    video_path: Optional[str] = None
     shareable_with_partner: bool = False
     shareable_with_provider: bool = False
     id: str = field(default_factory=lambda: str(uuid.uuid4()))

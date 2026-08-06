@@ -29,3 +29,8 @@ def test_created_at_defaults_to_now_utc():
 def test_audio_path_defaults_to_none_for_text_only_entries():
     entry = Entry(transcript="typed, not spoken")
     assert entry.audio_path is None
+
+
+def test_video_path_defaults_to_none():
+    entry = Entry(transcript="typed, not filmed")
+    assert entry.video_path is None

@@ -1,15 +1,21 @@
-import sqlite3
+import os
 from datetime import datetime, timedelta, timezone
 
+import psycopg
 import pytest
 
 from soliloquy.entry import Entry
 from soliloquy.storage import EntryStore
 
+TEST_DATABASE_URL = os.environ.get(
+    "TEST_DATABASE_URL", "postgresql://soliloquy:soliloquy@localhost:5433/soliloquy_test"
+)
+
 
 @pytest.fixture
-def store(tmp_path):
-    s = EntryStore(str(tmp_path / "test.db"))
+def store():
+    s = EntryStore(TEST_DATABASE_URL)
+    s._conn.execute("TRUNCATE TABLE entries")
     yield s
     s.close()
 
@@ -85,37 +91,48 @@ def test_audio_path_is_preserved_when_set(store):
     assert fetched.audio_path == "/recordings/abc.wav"
 
 
-def test_a_fresh_db_file_is_created_and_usable(tmp_path):
-    db_path = tmp_path / "nested" / "dir" / "fresh.db"
-    store = EntryStore(str(db_path))
-    try:
-        store.add(Entry(transcript="works on a fresh db"))
-        assert len(store.all()) == 1
-    finally:
-        store.close()
+def test_video_path_is_preserved_when_set(store):
+    entry = Entry(transcript="video entry", video_path="videos/abc.mp4")
+    store.add(entry)
+
+    fetched = store.get(entry.id)
+
+    assert fetched.video_path == "videos/abc.mp4"
 
 
-def test_entrystore_works_as_a_context_manager(tmp_path):
-    db_path = str(tmp_path / "test.db")
-    with EntryStore(db_path) as store:
+def test_update_video_path_sets_it_on_an_existing_entry(store):
+    entry = Entry(transcript="entry")
+    store.add(entry)
+
+    assert store.update_video_path(entry.id, "videos/later.mp4") is True
+    assert store.get(entry.id).video_path == "videos/later.mp4"
+
+
+def test_update_video_path_returns_false_for_an_unknown_entry_id(store):
+    assert store.update_video_path("does-not-exist", "videos/x.mp4") is False
+
+
+def test_entrystore_works_as_a_context_manager():
+    with EntryStore(TEST_DATABASE_URL) as store:
+        store._conn.execute("TRUNCATE TABLE entries")
         store.add(Entry(transcript="via context manager"))
         assert len(store.all()) == 1
 
     # The connection should be closed after the `with` block -- confirm
     # by checking further use raises, rather than just trusting close()
     # was called.
-    with pytest.raises(sqlite3.ProgrammingError):
+    with pytest.raises(psycopg.OperationalError):
         store.all()
 
 
-def test_entrystore_closes_even_if_an_exception_is_raised_inside_the_with_block(tmp_path):
-    db_path = str(tmp_path / "test.db")
+def test_entrystore_closes_even_if_an_exception_is_raised_inside_the_with_block():
     with pytest.raises(ValueError):
-        with EntryStore(db_path) as store:
+        with EntryStore(TEST_DATABASE_URL) as store:
+            store._conn.execute("TRUNCATE TABLE entries")
             store.add(Entry(transcript="before the exception"))
             raise ValueError("simulated failure")
 
-    with pytest.raises(sqlite3.ProgrammingError):
+    with pytest.raises(psycopg.OperationalError):
         store.all()
 
 
@@ -184,25 +201,25 @@ def test_update_sharing_with_no_flags_passed_is_a_no_op_that_confirms_existence(
     assert store.update_sharing("does-not-exist") is False
 
 
-def test_a_db_created_before_sharing_columns_existed_still_opens_and_defaults_to_private(tmp_path):
-    # Simulates an existing DB from before this feature -- create one
-    # with the OLD schema by hand, then confirm EntryStore's
-    # _ensure_sharing_columns() migration guard handles it.
-    db_path = str(tmp_path / "old.db")
-    conn = sqlite3.connect(db_path)
-    conn.executescript(
+def test_a_db_created_before_the_optional_columns_existed_still_opens_and_defaults_correctly():
+    # Simulates an existing DB from before video_path/sharing flags
+    # existed -- create the table with the OLD schema by hand, then
+    # confirm EntryStore's _ensure_columns() migration guard handles it.
+    conn = psycopg.connect(TEST_DATABASE_URL, autocommit=True)
+    conn.execute("DROP TABLE IF EXISTS entries")
+    conn.execute(
         "CREATE TABLE entries (id TEXT PRIMARY KEY, created_at TEXT NOT NULL, "
-        "transcript TEXT NOT NULL, audio_path TEXT);"
+        "transcript TEXT NOT NULL, audio_path TEXT)"
     )
     conn.execute(
-        "INSERT INTO entries (id, created_at, transcript, audio_path) VALUES (?, ?, ?, ?)",
+        "INSERT INTO entries (id, created_at, transcript, audio_path) VALUES (%s, %s, %s, %s)",
         ("old-id", datetime.now(timezone.utc).isoformat(), "an entry from before this feature existed", None),
     )
-    conn.commit()
     conn.close()
 
-    with EntryStore(db_path) as store:
+    with EntryStore(TEST_DATABASE_URL) as store:
         fetched = store.get("old-id")
         assert fetched.transcript == "an entry from before this feature existed"
+        assert fetched.video_path is None
         assert fetched.shareable_with_partner is False
         assert fetched.shareable_with_provider is False

@@ -9,6 +9,33 @@ on:
 jobs:
   test:
     runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: soliloquy
+          POSTGRES_PASSWORD: soliloquy
+          POSTGRES_DB: soliloquy_test
+        ports:
+          - 5433:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 5
+    # MinIO isn't started as a `services:` container -- GitHub Actions'
+    # services: syntax has no way to override a container's command,
+    # and MinIO's image needs `server /data` passed explicitly (its
+    # bare default command just prints usage and exits). Started by
+    # hand instead, see the "Start MinIO" step below.
+
+    env:
+      TEST_DATABASE_URL: postgresql://soliloquy:soliloquy@localhost:5433/soliloquy_test
+      S3_ENDPOINT_URL: http://localhost:9000
+      S3_BUCKET: soliloquy
+      S3_ACCESS_KEY: soliloquy
+      S3_SECRET_KEY: soliloquy123
+
     steps:
       - uses: actions/checkout@v4
 
@@ -18,8 +45,21 @@ jobs:
           python-version: "3.12"
           cache: "pip"
 
+      - name: Install ffmpeg
+        run: sudo apt-get update && sudo apt-get install -y ffmpeg
+
+      - name: Start MinIO
+        run: |
+          docker run -d --name minio -p 9000:9000 \
+            -e MINIO_ROOT_USER=soliloquy -e MINIO_ROOT_PASSWORD=soliloquy123 \
+            minio/minio server /data
+          for i in $(seq 1 20); do
+            curl -sf http://localhost:9000/minio/health/live && break
+            sleep 1
+          done
+
       - name: Install dependencies
-        run: pip install -e ".[dev]"
+        run: pip install -e ".[dev,web]"
 
       - name: Run tests
         run: pytest -v

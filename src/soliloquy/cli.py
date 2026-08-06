@@ -11,6 +11,7 @@
 from __future__ import annotations
 
 import argparse
+import os
 import sys
 import threading
 from datetime import datetime, timedelta, timezone
@@ -151,9 +152,15 @@ def record_entry(recordings_dir: str = "recordings") -> str:
     return output_path
 
 
+DEFAULT_DATABASE_URL = "postgresql://soliloquy:soliloquy@localhost:5433/soliloquy"
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="soliloquy", description="A voice-first journal.")
-    parser.add_argument("--db", default="soliloquy.db", help="Path to the SQLite database file.")
+    parser.add_argument(
+        "--db", default=os.environ.get("DATABASE_URL", DEFAULT_DATABASE_URL),
+        help="Postgres connection string (default: $DATABASE_URL, or the local docker-compose db).",
+    )
     subparsers = parser.add_subparsers(dest="command", required=True)
 
     add_parser = subparsers.add_parser("add", help="Add a new journal entry.")

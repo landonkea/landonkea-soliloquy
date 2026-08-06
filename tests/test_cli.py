@@ -1,3 +1,4 @@
+import os
 from datetime import datetime, timedelta, timezone
 
 import pytest
@@ -6,6 +7,17 @@ from soliloquy.analyzer import AnalysisResult, NoEntriesError
 from soliloquy.cli import add_entry, add_entry_from_audio, analyze_range, format_report, list_entries, main, report_range
 from soliloquy.entry import Entry
 from soliloquy.storage import EntryStore
+
+TEST_DATABASE_URL = os.environ.get(
+    "TEST_DATABASE_URL", "postgresql://soliloquy:soliloquy@localhost:5433/soliloquy_test"
+)
+
+
+@pytest.fixture(autouse=True)
+def _clean_db():
+    with EntryStore(TEST_DATABASE_URL) as store:
+        store._conn.execute("TRUNCATE TABLE entries")
+    yield
 
 
 class FakeTranscriber:
@@ -33,8 +45,8 @@ class FakeAnalyzer:
         return self.result
 
 
-def test_add_entry_persists_and_returns_the_entry(tmp_path):
-    store = EntryStore(str(tmp_path / "test.db"))
+def test_add_entry_persists_and_returns_the_entry():
+    store = EntryStore(TEST_DATABASE_URL)
     try:
         entry = add_entry(store, "A real entry via the CLI helper")
         assert entry.transcript == "A real entry via the CLI helper"
@@ -43,8 +55,8 @@ def test_add_entry_persists_and_returns_the_entry(tmp_path):
         store.close()
 
 
-def test_list_entries_returns_everything_added(tmp_path):
-    store = EntryStore(str(tmp_path / "test.db"))
+def test_list_entries_returns_everything_added():
+    store = EntryStore(TEST_DATABASE_URL)
     try:
         add_entry(store, "first")
         add_entry(store, "second")
@@ -53,16 +65,16 @@ def test_list_entries_returns_everything_added(tmp_path):
         store.close()
 
 
-def test_list_entries_is_empty_for_a_fresh_store(tmp_path):
-    store = EntryStore(str(tmp_path / "test.db"))
+def test_list_entries_is_empty_for_a_fresh_store():
+    store = EntryStore(TEST_DATABASE_URL)
     try:
         assert list_entries(store) == []
     finally:
         store.close()
 
 
-def test_add_entry_from_audio_transcribes_and_persists_with_audio_path(tmp_path):
-    store = EntryStore(str(tmp_path / "test.db"))
+def test_add_entry_from_audio_transcribes_and_persists_with_audio_path():
+    store = EntryStore(TEST_DATABASE_URL)
     transcriber = FakeTranscriber("This is what the recording said.")
     try:
         entry = add_entry_from_audio(store, transcriber, "/some/recording.wav")
@@ -78,8 +90,8 @@ def test_add_entry_from_audio_transcribes_and_persists_with_audio_path(tmp_path)
         store.close()
 
 
-def test_add_entry_from_audio_appears_in_list_entries_alongside_typed_ones(tmp_path):
-    store = EntryStore(str(tmp_path / "test.db"))
+def test_add_entry_from_audio_appears_in_list_entries_alongside_typed_ones():
+    store = EntryStore(TEST_DATABASE_URL)
     try:
         add_entry(store, "typed entry")
         add_entry_from_audio(store, FakeTranscriber("spoken entry"), "/rec.wav")
@@ -90,8 +102,8 @@ def test_add_entry_from_audio_appears_in_list_entries_alongside_typed_ones(tmp_p
         store.close()
 
 
-def test_analyze_range_only_passes_entries_inside_the_window_to_the_analyzer(tmp_path):
-    store = EntryStore(str(tmp_path / "test.db"))
+def test_analyze_range_only_passes_entries_inside_the_window_to_the_analyzer():
+    store = EntryStore(TEST_DATABASE_URL)
     try:
         now = datetime.now(timezone.utc)
         store.add(Entry(transcript="too old", created_at=now - timedelta(days=30)))
@@ -105,8 +117,8 @@ def test_analyze_range_only_passes_entries_inside_the_window_to_the_analyzer(tmp
         store.close()
 
 
-def test_analyze_range_returns_the_analyzers_result(tmp_path):
-    store = EntryStore(str(tmp_path / "test.db"))
+def test_analyze_range_returns_the_analyzers_result():
+    store = EntryStore(TEST_DATABASE_URL)
     try:
         store.add(Entry(transcript="an entry"))
         expected = AnalysisResult(
@@ -121,8 +133,8 @@ def test_analyze_range_returns_the_analyzers_result(tmp_path):
         store.close()
 
 
-def test_analyze_range_raises_no_entries_error_when_window_is_empty(tmp_path):
-    store = EntryStore(str(tmp_path / "test.db"))
+def test_analyze_range_raises_no_entries_error_when_window_is_empty():
+    store = EntryStore(TEST_DATABASE_URL)
     try:
         with pytest.raises(NoEntriesError):
             analyze_range(store, FakeAnalyzer(), days=7)
@@ -132,8 +144,8 @@ def test_analyze_range_raises_no_entries_error_when_window_is_empty(tmp_path):
 
 # ── report_range / format_report ────────────────────────────────────
 
-def test_report_range_self_audience_sees_every_entry_regardless_of_sharing_flags(tmp_path):
-    store = EntryStore(str(tmp_path / "test.db"))
+def test_report_range_self_audience_sees_every_entry_regardless_of_sharing_flags():
+    store = EntryStore(TEST_DATABASE_URL)
     try:
         store.add(Entry(transcript="private one"))
         store.add(Entry(transcript="shared with partner", shareable_with_partner=True))
@@ -146,8 +158,8 @@ def test_report_range_self_audience_sees_every_entry_regardless_of_sharing_flags
         store.close()
 
 
-def test_report_range_partner_audience_only_sees_entries_shared_with_partner(tmp_path):
-    store = EntryStore(str(tmp_path / "test.db"))
+def test_report_range_partner_audience_only_sees_entries_shared_with_partner():
+    store = EntryStore(TEST_DATABASE_URL)
     try:
         store.add(Entry(transcript="private one"))
         store.add(Entry(transcript="shared with partner", shareable_with_partner=True))
@@ -161,8 +173,8 @@ def test_report_range_partner_audience_only_sees_entries_shared_with_partner(tmp
         store.close()
 
 
-def test_report_range_provider_audience_only_sees_entries_shared_with_provider(tmp_path):
-    store = EntryStore(str(tmp_path / "test.db"))
+def test_report_range_provider_audience_only_sees_entries_shared_with_provider():
+    store = EntryStore(TEST_DATABASE_URL)
     try:
         store.add(Entry(transcript="private one"))
         store.add(Entry(transcript="shared with provider", shareable_with_provider=True))
@@ -175,8 +187,8 @@ def test_report_range_provider_audience_only_sees_entries_shared_with_provider(t
         store.close()
 
 
-def test_report_range_raises_no_entries_error_when_nothing_matches_the_audience(tmp_path):
-    store = EntryStore(str(tmp_path / "test.db"))
+def test_report_range_raises_no_entries_error_when_nothing_matches_the_audience():
+    store = EntryStore(TEST_DATABASE_URL)
     try:
         store.add(Entry(transcript="private one"))
         with pytest.raises(NoEntriesError):
@@ -185,8 +197,8 @@ def test_report_range_raises_no_entries_error_when_nothing_matches_the_audience(
         store.close()
 
 
-def test_report_range_rejects_an_unknown_audience(tmp_path):
-    store = EntryStore(str(tmp_path / "test.db"))
+def test_report_range_rejects_an_unknown_audience():
+    store = EntryStore(TEST_DATABASE_URL)
     try:
         store.add(Entry(transcript="entry"))
         with pytest.raises(ValueError):
@@ -213,8 +225,8 @@ def test_format_report_includes_summary_mood_topics_and_entry_transcripts():
 
 # ── `share` CLI command ──────────────────────────────────────────────
 
-def test_share_command_sets_the_requested_flags(tmp_path):
-    db_path = str(tmp_path / "test.db")
+def test_share_command_sets_the_requested_flags():
+    db_path = TEST_DATABASE_URL
     store = EntryStore(db_path)
     entry = Entry(transcript="entry")
     store.add(entry)
@@ -229,8 +241,8 @@ def test_share_command_sets_the_requested_flags(tmp_path):
         assert fetched.shareable_with_provider is False
 
 
-def test_share_command_can_unset_a_flag(tmp_path):
-    db_path = str(tmp_path / "test.db")
+def test_share_command_can_unset_a_flag():
+    db_path = TEST_DATABASE_URL
     store = EntryStore(db_path)
     entry = Entry(transcript="entry", shareable_with_partner=True)
     store.add(entry)
@@ -243,8 +255,8 @@ def test_share_command_can_unset_a_flag(tmp_path):
         assert store.get(entry.id).shareable_with_partner is False
 
 
-def test_share_command_returns_nonzero_for_an_unknown_entry_id(tmp_path):
-    db_path = str(tmp_path / "test.db")
+def test_share_command_returns_nonzero_for_an_unknown_entry_id():
+    db_path = TEST_DATABASE_URL
     EntryStore(db_path).close()
 
     exit_code = main(["--db", db_path, "share", "does-not-exist", "--partner"])
@@ -252,8 +264,8 @@ def test_share_command_returns_nonzero_for_an_unknown_entry_id(tmp_path):
     assert exit_code == 1
 
 
-def test_share_command_returns_nonzero_when_no_flags_are_passed(tmp_path):
-    db_path = str(tmp_path / "test.db")
+def test_share_command_returns_nonzero_when_no_flags_are_passed():
+    db_path = TEST_DATABASE_URL
     store = EntryStore(db_path)
     entry = Entry(transcript="entry")
     store.add(entry)

@@ -1,11 +1,18 @@
 # ───────────────────────────────────────────────────────────────────
-# storage.py — SQLite-backed entry storage
+# storage.py — Postgres-backed entry storage
 # ───────────────────────────────────────────────────────────────────
-# One table, one row per Entry. Timestamps are stored as ISO 8601
-# UTC strings (not a SQLite-native datetime type — SQLite doesn't
-# have one) so they sort correctly as plain strings AND parse back
-# into real datetime objects unambiguously regardless of what
-# timezone the reading process happens to be in.
+# EntryStore talks to a real Postgres database via a DATABASE_URL
+# connection string (postgres://user:pass@host:port/db), not a local
+# file -- this is what makes Soliloquy reachable from more than one
+# device/process. See docker-compose.yml for the self-hosted Postgres
+# used in local dev; the same connection string shape works unchanged
+# against a managed provider (Supabase, Neon) later.
+#
+# Timestamps are stored as ISO 8601 UTC strings in a TEXT column
+# (not a native TIMESTAMP type) so the exact round-trip behavior this
+# app already relies on (an Entry's created_at comes back byte-for-
+# byte comparable after a save/load) doesn't depend on Postgres's own
+# timestamp parsing/timezone handling.
 #
 # `range_between(start, end)` exists now, with only a handful of
 # entries likely to ever be created by hand while testing, because
@@ -15,8 +22,8 @@
 # is what keeps this from becoming "a pile of entries with no way to
 # ask a real question about them."
 #
-# _ensure_sharing_columns() is a deliberate stopgap, not a real
-# migration system — fine at this project's current size (see
+# _ensure_columns() is a deliberate stopgap, not a real migration
+# system — fine at this project's current size (see
 # landonkea-apple-products-scraper's own history for exactly why this
 # doesn't stay fine forever: it moved to real Alembic migrations once
 # it had real production data and more than one schema change to
@@ -25,10 +32,10 @@
 
 from __future__ import annotations
 
-import sqlite3
 from datetime import datetime
-from pathlib import Path
 from typing import Optional
+
+import psycopg
 
 from .entry import Entry
 
@@ -38,36 +45,44 @@ CREATE TABLE IF NOT EXISTS entries (
     created_at TEXT NOT NULL,
     transcript TEXT NOT NULL,
     audio_path TEXT,
-    shareable_with_partner INTEGER NOT NULL DEFAULT 0,
-    shareable_with_provider INTEGER NOT NULL DEFAULT 0
+    video_path TEXT,
+    shareable_with_partner BOOLEAN NOT NULL DEFAULT FALSE,
+    shareable_with_provider BOOLEAN NOT NULL DEFAULT FALSE
 );
 CREATE INDEX IF NOT EXISTS idx_entries_created_at ON entries (created_at);
 """
 
-_COLUMNS = "id, created_at, transcript, audio_path, shareable_with_partner, shareable_with_provider"
+_COLUMNS = "id, created_at, transcript, audio_path, video_path, shareable_with_partner, shareable_with_provider"
+
+# Columns that might be missing on a database created before this
+# feature existed -- see _ensure_columns().
+_OPTIONAL_COLUMNS = {
+    "video_path": "TEXT",
+    "shareable_with_partner": "BOOLEAN NOT NULL DEFAULT FALSE",
+    "shareable_with_provider": "BOOLEAN NOT NULL DEFAULT FALSE",
+}
 
 
 class EntryStore:
-    def __init__(self, db_path: str = "soliloquy.db"):
-        self.db_path = db_path
-        parent_dir = Path(db_path).parent
-        if parent_dir != Path("."):
-            parent_dir.mkdir(parents=True, exist_ok=True)
-        self._conn = sqlite3.connect(db_path)
-        self._conn.executescript(SCHEMA)
-        self._ensure_sharing_columns()
-        self._conn.commit()
+    def __init__(self, database_url: str):
+        self.database_url = database_url
+        self._conn = psycopg.connect(database_url, autocommit=True)
+        self._conn.execute(SCHEMA)
+        self._ensure_columns()
 
-    def _ensure_sharing_columns(self) -> None:
-        # Handles a DB file created before these two columns existed --
+    def _ensure_columns(self) -> None:
+        # Handles a DB created before one of _OPTIONAL_COLUMNS existed --
         # CREATE TABLE IF NOT EXISTS alone won't add them to an already-
         # existing table. Safe to run every startup: only ALTERs if a
         # column is genuinely missing.
-        existing = {row[1] for row in self._conn.execute("PRAGMA table_info(entries)")}
-        if "shareable_with_partner" not in existing:
-            self._conn.execute("ALTER TABLE entries ADD COLUMN shareable_with_partner INTEGER NOT NULL DEFAULT 0")
-        if "shareable_with_provider" not in existing:
-            self._conn.execute("ALTER TABLE entries ADD COLUMN shareable_with_provider INTEGER NOT NULL DEFAULT 0")
+        existing = {
+            row[0] for row in self._conn.execute(
+                "SELECT column_name FROM information_schema.columns WHERE table_name = 'entries'"
+            ).fetchall()
+        }
+        for column, ddl_type in _OPTIONAL_COLUMNS.items():
+            if column not in existing:
+                self._conn.execute(f"ALTER TABLE entries ADD COLUMN {column} {ddl_type}")
 
     def __enter__(self) -> "EntryStore":
         return self
@@ -77,21 +92,21 @@ class EntryStore:
 
     def add(self, entry: Entry) -> None:
         self._conn.execute(
-            f"INSERT INTO entries ({_COLUMNS}) VALUES (?, ?, ?, ?, ?, ?)",
+            f"INSERT INTO entries ({_COLUMNS}) VALUES (%s, %s, %s, %s, %s, %s, %s)",
             (
                 entry.id,
                 entry.created_at.isoformat(),
                 entry.transcript,
                 entry.audio_path,
-                int(entry.shareable_with_partner),
-                int(entry.shareable_with_provider),
+                entry.video_path,
+                entry.shareable_with_partner,
+                entry.shareable_with_provider,
             ),
         )
-        self._conn.commit()
 
     def get(self, entry_id: str) -> Optional[Entry]:
         row = self._conn.execute(
-            f"SELECT {_COLUMNS} FROM entries WHERE id = ?", (entry_id,)
+            f"SELECT {_COLUMNS} FROM entries WHERE id = %s", (entry_id,)
         ).fetchone()
         return self._row_to_entry(row) if row else None
 
@@ -110,14 +125,13 @@ class EntryStore:
         date window" (the caller decides which audience it needs)."""
         rows = self._conn.execute(
             f"SELECT {_COLUMNS} FROM entries "
-            "WHERE created_at >= ? AND created_at < ? ORDER BY created_at ASC",
+            "WHERE created_at >= %s AND created_at < %s ORDER BY created_at ASC",
             (start.isoformat(), end.isoformat()),
         ).fetchall()
         return [self._row_to_entry(row) for row in rows]
 
     def delete(self, entry_id: str) -> bool:
-        cursor = self._conn.execute("DELETE FROM entries WHERE id = ?", (entry_id,))
-        self._conn.commit()
+        cursor = self._conn.execute("DELETE FROM entries WHERE id = %s", (entry_id,))
         return cursor.rowcount > 0
 
     def update_sharing(
@@ -133,15 +147,24 @@ class EntryStore:
         updates: list[str] = []
         params: list[object] = []
         if shareable_with_partner is not None:
-            updates.append("shareable_with_partner = ?")
-            params.append(int(shareable_with_partner))
+            updates.append("shareable_with_partner = %s")
+            params.append(shareable_with_partner)
         if shareable_with_provider is not None:
-            updates.append("shareable_with_provider = ?")
-            params.append(int(shareable_with_provider))
+            updates.append("shareable_with_provider = %s")
+            params.append(shareable_with_provider)
         params.append(entry_id)
 
-        cursor = self._conn.execute(f"UPDATE entries SET {', '.join(updates)} WHERE id = ?", params)
-        self._conn.commit()
+        cursor = self._conn.execute(f"UPDATE entries SET {', '.join(updates)} WHERE id = %s", params)
+        return cursor.rowcount > 0
+
+    def update_video_path(self, entry_id: str, video_path: str) -> bool:
+        """Set video_path on an existing entry -- used by the video
+        upload flow, which creates the Entry from the extracted audio's
+        transcript first, then attaches the video separately once it's
+        finished uploading to object storage."""
+        cursor = self._conn.execute(
+            "UPDATE entries SET video_path = %s WHERE id = %s", (video_path, entry_id)
+        )
         return cursor.rowcount > 0
 
     def close(self) -> None:
@@ -149,12 +172,13 @@ class EntryStore:
 
     @staticmethod
     def _row_to_entry(row: tuple) -> Entry:
-        entry_id, created_at, transcript, audio_path, shareable_with_partner, shareable_with_provider = row
+        entry_id, created_at, transcript, audio_path, video_path, shareable_with_partner, shareable_with_provider = row
         return Entry(
             id=entry_id,
             created_at=datetime.fromisoformat(created_at),
             transcript=transcript,
             audio_path=audio_path,
+            video_path=video_path,
             shareable_with_partner=bool(shareable_with_partner),
             shareable_with_provider=bool(shareable_with_provider),
         )

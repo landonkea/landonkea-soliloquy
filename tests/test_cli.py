@@ -1,4 +1,10 @@
-from soliloquy.cli import add_entry, add_entry_from_audio, list_entries
+from datetime import datetime, timedelta, timezone
+
+import pytest
+
+from soliloquy.analyzer import AnalysisResult, NoEntriesError
+from soliloquy.cli import add_entry, add_entry_from_audio, analyze_range, list_entries
+from soliloquy.entry import Entry
 from soliloquy.storage import EntryStore
 
 
@@ -10,6 +16,21 @@ class FakeTranscriber:
     def transcribe(self, audio_path: str) -> str:
         self.last_audio_path = audio_path
         return self.transcript
+
+
+class FakeAnalyzer:
+    def __init__(self, result: AnalysisResult | None = None):
+        self.result = result or AnalysisResult(
+            entry_count=0, total_word_count=0, summary="fake summary",
+            mood_notes="fake mood", key_topics=["fake"],
+        )
+        self.last_entries = None
+
+    def analyze(self, entries):
+        self.last_entries = entries
+        if not entries:
+            raise NoEntriesError("no entries")
+        return self.result
 
 
 def test_add_entry_persists_and_returns_the_entry(tmp_path):
@@ -65,5 +86,45 @@ def test_add_entry_from_audio_appears_in_list_entries_alongside_typed_ones(tmp_p
 
         transcripts = [e.transcript for e in list_entries(store)]
         assert transcripts == ["typed entry", "spoken entry"]
+    finally:
+        store.close()
+
+
+def test_analyze_range_only_passes_entries_inside_the_window_to_the_analyzer(tmp_path):
+    store = EntryStore(str(tmp_path / "test.db"))
+    try:
+        now = datetime.now(timezone.utc)
+        store.add(Entry(transcript="too old", created_at=now - timedelta(days=30)))
+        store.add(Entry(transcript="within range", created_at=now - timedelta(days=2)))
+
+        analyzer = FakeAnalyzer()
+        analyze_range(store, analyzer, days=7)
+
+        assert [e.transcript for e in analyzer.last_entries] == ["within range"]
+    finally:
+        store.close()
+
+
+def test_analyze_range_returns_the_analyzers_result(tmp_path):
+    store = EntryStore(str(tmp_path / "test.db"))
+    try:
+        store.add(Entry(transcript="an entry"))
+        expected = AnalysisResult(
+            entry_count=1, total_word_count=2, summary="s", mood_notes="m", key_topics=["t"]
+        )
+        analyzer = FakeAnalyzer(result=expected)
+
+        result = analyze_range(store, analyzer, days=7)
+
+        assert result is expected
+    finally:
+        store.close()
+
+
+def test_analyze_range_raises_no_entries_error_when_window_is_empty(tmp_path):
+    store = EntryStore(str(tmp_path / "test.db"))
+    try:
+        with pytest.raises(NoEntriesError):
+            analyze_range(store, FakeAnalyzer(), days=7)
     finally:
         store.close()

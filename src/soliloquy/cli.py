@@ -13,9 +13,10 @@ from __future__ import annotations
 import argparse
 import sys
 import threading
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
+from .analyzer import Analyzer, AnalysisResult
 from .entry import Entry
 from .storage import EntryStore
 from .transcriber import Transcriber
@@ -39,6 +40,17 @@ def add_entry_from_audio(store: EntryStore, transcriber: Transcriber, audio_path
 
 def list_entries(store: EntryStore) -> list[Entry]:
     return store.all()
+
+
+def analyze_range(store: EntryStore, analyzer: Analyzer, days: int) -> AnalysisResult:
+    """Analyze the last `days` days of entries — the building block
+    behind `soliloquy analyze --days N`. Reuses EntryStore's
+    range_between exactly as documented (see storage.py's module
+    comment on why that method exists in the first place)."""
+    end = datetime.now(timezone.utc)
+    start = end - timedelta(days=days)
+    entries = store.range_between(start, end)
+    return analyzer.analyze(entries)
 
 
 def record_entry(recordings_dir: str = "recordings") -> str:
@@ -96,6 +108,9 @@ def main(argv: list[str] | None = None) -> int:
     transcribe_parser = subparsers.add_parser("transcribe", help="Transcribe an existing audio file into a real entry.")
     transcribe_parser.add_argument("audio_path", help="Path to the .wav file to transcribe.")
 
+    analyze_parser = subparsers.add_parser("analyze", help="Analyze recent entries (requires ANTHROPIC_API_KEY).")
+    analyze_parser.add_argument("--days", type=int, default=7, help="How many days back to analyze (default: 7).")
+
     args = parser.parse_args(argv)
 
     if args.command == "record" and not args.transcribe:
@@ -126,6 +141,17 @@ def main(argv: list[str] | None = None) -> int:
                 print("No entries yet.")
             for entry in entries:
                 print(f"[{entry.created_at.isoformat()}] {entry.transcript}")
+        elif args.command == "analyze":
+            from .analyzer import ClaudeAnalyzer, NoEntriesError
+            try:
+                result = analyze_range(store, ClaudeAnalyzer(), args.days)
+            except NoEntriesError:
+                print(f"No entries in the last {args.days} days to analyze.")
+                return 0
+            print(f"\n{result.entry_count} entries, {result.total_word_count} words, last {args.days} days\n")
+            print(f"Summary: {result.summary}\n")
+            print(f"Mood: {result.mood_notes}\n")
+            print(f"Key topics: {', '.join(result.key_topics)}")
     finally:
         store.close()
     return 0

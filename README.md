@@ -77,8 +77,9 @@ fact — the recording is the whole interaction.
   everything, for your own review. Add `--output some-file.md` to write the report to a file
   instead of the terminal, for actually handing it to someone.
 
-**Next:** see `CHECKLIST.md` for the current build-out (Postgres/MinIO storage — done; FastAPI
-backend + web GUI + video capture — in progress) and what's after that.
+**Next:** see `CHECKLIST.md` for status — Postgres/MinIO storage, the FastAPI backend, video
+capture, and the web GUI are all done; what's next is testing the video flow from a real phone
+and what comes after.
 
 **A future integration point, not built yet:** `landonkea-thinkLessScheduleMore`'s automation
 engine (`AutomationAction`/`AutomationRegistry`) makes "record a journal entry" a natural

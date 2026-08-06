@@ -1,0 +1,65 @@
+{% extends "base.html" %}
+{% block title %}Report — Soliloquy{% endblock %}
+{% block content %}
+  <h1>Report</h1>
+  <p>Generates a readable write-up from entries in the date range. "self" includes everything;
+     "partner"/"provider" only include entries explicitly marked shared with that audience.</p>
+
+  <form id="report-form">
+    <label>Days back
+      <input type="number" name="days" value="7" min="1" required>
+    </label>
+    <label>Audience
+      <select name="audience">
+        {% for audience in audiences %}
+          <option value="{{ audience }}">{{ audience }}</option>
+        {% endfor %}
+      </select>
+    </label>
+    <button type="submit">Generate</button>
+    <div class="status" id="report-status"></div>
+  </form>
+
+  <div id="report-output"></div>
+
+  <script>
+    const form = document.getElementById("report-form");
+    const statusEl = document.getElementById("report-status");
+    const outputEl = document.getElementById("report-output");
+
+    form.addEventListener("submit", async (event) => {
+      event.preventDefault();
+      statusEl.textContent = "Generating (this calls Claude, may take a few seconds)...";
+      statusEl.className = "status";
+      outputEl.innerHTML = "";
+
+      const body = new FormData(form);
+      const response = await fetch("/reports", { method: "POST", body });
+
+      if (!response.ok) {
+        const detail = await response.json().catch(() => ({}));
+        statusEl.textContent = detail.detail || `Request failed (${response.status})`;
+        statusEl.className = "status error";
+        return;
+      }
+
+      const text = await response.text();
+
+      statusEl.textContent = "Done.";
+      statusEl.className = "status ok";
+
+      const pre = document.createElement("pre");
+      pre.className = "report";
+      pre.textContent = text;
+
+      const blob = new Blob([text], { type: "text/plain" });
+      const link = document.createElement("a");
+      link.href = URL.createObjectURL(blob);
+      link.download = "soliloquy-report.txt";
+      link.textContent = "Download report";
+
+      outputEl.appendChild(link);
+      outputEl.appendChild(pre);
+    });
+  </script>
+{% endblock %}

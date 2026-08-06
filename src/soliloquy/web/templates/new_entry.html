@@ -1,0 +1,66 @@
+{% extends "base.html" %}
+{% block title %}New entry — Soliloquy{% endblock %}
+{% block content %}
+  <h1>New entry</h1>
+
+  <fieldset>
+    <legend>Typed entry</legend>
+    <form id="text-form">
+      <textarea name="text" rows="4" placeholder="What's on your mind?" required></textarea>
+      <button type="submit">Save</button>
+      <div class="status" id="text-status"></div>
+    </form>
+  </fieldset>
+
+  <fieldset>
+    <legend>Audio entry</legend>
+    <p>Upload an existing recording, or use your device's own voice memo app and select the file
+       here.</p>
+    <form id="audio-form">
+      <input type="file" name="file" accept="audio/*" required>
+      <button type="submit">Upload &amp; transcribe</button>
+      <div class="status" id="audio-status"></div>
+    </form>
+  </fieldset>
+
+  <fieldset>
+    <legend>Video entry</legend>
+    <p>On a phone, this opens your native camera app directly. The audio track is extracted and
+       transcribed automatically; the video is kept too.</p>
+    <form id="video-form">
+      <input type="file" name="file" accept="video/*" capture="user" required>
+      <button type="submit">Upload &amp; transcribe</button>
+      <div class="status" id="video-status"></div>
+    </form>
+  </fieldset>
+
+  <script>
+    function wireForm(formId, statusId, url, isFile) {
+      const form = document.getElementById(formId);
+      const statusEl = document.getElementById(statusId);
+      form.addEventListener("submit", async (event) => {
+        event.preventDefault();
+        statusEl.textContent = "Uploading...";
+        statusEl.className = "status";
+        const body = new FormData(form);
+        try {
+          const response = await fetch(url, { method: "POST", body });
+          if (!response.ok) {
+            const detail = await response.json().catch(() => ({}));
+            throw new Error(detail.detail || `Request failed (${response.status})`);
+          }
+          statusEl.textContent = "Saved. Redirecting...";
+          statusEl.className = "status ok";
+          window.location.href = "/";
+        } catch (err) {
+          statusEl.textContent = err.message;
+          statusEl.className = "status error";
+        }
+      });
+    }
+
+    wireForm("text-form", "text-status", "/entries");
+    wireForm("audio-form", "audio-status", "/entries/audio");
+    wireForm("video-form", "video-status", "/entries/video");
+  </script>
+{% endblock %}

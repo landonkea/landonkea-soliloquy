@@ -101,6 +101,16 @@ def test_report_returns_400_for_an_unknown_audience(client):
     assert response.status_code == 400
 
 
+def test_report_returns_a_clear_502_when_no_api_key_is_configured(client, monkeypatch):
+    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+    client.post("/entries", data={"text": "an entry to analyze"})
+
+    response = client.post("/reports", data={"days": 7, "audience": "self"})
+
+    assert response.status_code == 502
+    assert "API key" in response.json()["detail"]
+
+
 def _install_fake_faster_whisper(segment_texts: list[str]):
     # Same technique as test_transcriber.py -- faster-whisper isn't
     # installed in CI (it needs a real model download on first use),
@@ -167,3 +177,34 @@ def test_post_video_entry_stores_video_and_audio_and_transcribes(client, tmp_pat
     # Both files really made it to object storage.
     assert client.get(f"/media/{body['video_path']}").status_code == 200
     assert client.get(f"/media/{body['audio_path']}").status_code == 200
+
+
+# ── HTML pages ───────────────────────────────────────────────────────
+
+def test_entries_page_lists_entries_newest_first(client):
+    client.post("/entries", data={"text": "older entry"})
+    client.post("/entries", data={"text": "newer entry"})
+
+    response = client.get("/")
+
+    assert response.status_code == 200
+    assert response.text.index("newer entry") < response.text.index("older entry")
+
+
+def test_entries_page_shows_a_message_when_empty(client):
+    response = client.get("/")
+    assert response.status_code == 200
+    assert "No entries yet" in response.text
+
+
+def test_new_entry_page_loads(client):
+    response = client.get("/new")
+    assert response.status_code == 200
+    assert "New entry" in response.text
+
+
+def test_report_page_loads_and_lists_all_audiences(client):
+    response = client.get("/report")
+    assert response.status_code == 200
+    for audience in ("self", "partner", "provider"):
+        assert audience in response.text

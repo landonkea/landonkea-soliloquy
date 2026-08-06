@@ -1,0 +1,45 @@
+{% extends "base.html" %}
+{% block title %}Entries — Soliloquy{% endblock %}
+{% block content %}
+  <h1>Entries</h1>
+
+  {% if not entries %}
+    <p>No entries yet. <a href="/new">Add one.</a></p>
+  {% endif %}
+
+  {% for entry in entries %}
+    <div class="entry" id="entry-{{ entry.id }}">
+      <div class="entry-meta">{{ entry.created_at }} — {{ entry.word_count }} words</div>
+      <p>{{ entry.transcript if entry.transcript else "(no transcript)" }}</p>
+      {% if entry.audio_path %}
+        <audio controls src="/media/{{ entry.audio_path }}"></audio>
+      {% endif %}
+      {% if entry.video_path %}
+        <video controls src="/media/{{ entry.video_path }}"></video>
+      {% endif %}
+      <div class="share-flags">
+        <label><input type="checkbox" {% if entry.shareable_with_partner %}checked{% endif %}
+               onchange="setShare('{{ entry.id }}', 'partner', this.checked)"> shared with partner</label>
+        <label><input type="checkbox" {% if entry.shareable_with_provider %}checked{% endif %}
+               onchange="setShare('{{ entry.id }}', 'provider', this.checked)"> shared with provider</label>
+      </div>
+      <div class="status" id="status-{{ entry.id }}"></div>
+    </div>
+  {% endfor %}
+
+  <script>
+    async function setShare(entryId, audience, checked) {
+      const statusEl = document.getElementById(`status-${entryId}`);
+      const form = new FormData();
+      form.set(audience, checked ? "true" : "false");
+      const response = await fetch(`/entries/${entryId}/share`, { method: "POST", body: form });
+      if (response.ok) {
+        statusEl.textContent = "Saved.";
+        statusEl.className = "status ok";
+      } else {
+        statusEl.textContent = "Could not save -- try again.";
+        statusEl.className = "status error";
+      }
+    }
+  </script>
+{% endblock %}

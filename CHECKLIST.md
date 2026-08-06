@@ -51,14 +51,28 @@ Out of scope for now (confirmed with the user, not forgotten): the MQTT bridge t
       video file** — only a synthesized test clip so far; worth doing once stage 4's upload page
       exists to test from an actual phone.
 
-## Stage 4 — Web GUI
+## Stage 4 — Web GUI ✅ done
 
-- [ ] Jinja2 templates, no separate JS build: entries list (with audio/video playback), new-entry
+- [x] Jinja2 templates, no separate JS build: entries list (with audio/video playback), new-entry
       page (text/audio/video upload — the video `<input>` with `capture` is what makes "record
       with the phone's camera, then upload" work with zero extra code), share toggles, report
       generator
-- [ ] Opened and used in a real browser (desktop + phone) — add a text entry, upload real audio,
-      upload a real video from a phone, mark something shareable, generate a report
+- [x] Opened and used in a real desktop browser: added a real text entry, toggled a share flag
+      live (confirmed it persisted), generated a report and caught a real bug in the process (a
+      missing API key surfaced as an opaque "Internal Server Error" instead of a clear message —
+      fixed, now shows the actual reason)
+- [ ] **Not yet tested from an actual phone** — desktop browser only so far. Worth doing next:
+      open the site from a phone on the same network/tailnet and try the camera-capture upload for
+      real (video upload has only been verified with a synthesized test clip + `curl` so far, not
+      a real phone recording through the actual page)
+
+## Right after this
+
+- [ ] Test the video-capture flow from a real phone (not just desktop browser + synthesized test
+      video) — this is the one part of the original ask ("record with the phone's camera app,
+      then hand the file to Soliloquy") not yet verified on an actual phone
+- [ ] Set a real `ANTHROPIC_API_KEY` to verify the report page's happy path end-to-end (currently
+      only the error path is verified in this environment)
 
 ## After that (not started, no immediate plan)
 

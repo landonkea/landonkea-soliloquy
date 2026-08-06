@@ -22,8 +22,9 @@ import uuid
 from pathlib import Path
 from typing import Optional
 
-from fastapi import Depends, FastAPI, File, Form, HTTPException, UploadFile
-from fastapi.responses import PlainTextResponse, StreamingResponse
+from fastapi import Depends, FastAPI, File, Form, HTTPException, Request, UploadFile
+from fastapi.responses import HTMLResponse, PlainTextResponse, StreamingResponse
+from fastapi.templating import Jinja2Templates
 
 from ..analyzer import ClaudeAnalyzer, NoEntriesError
 from ..cli import AUDIENCES, DEFAULT_DATABASE_URL, add_entry, format_report, list_entries, report_range
@@ -34,6 +35,7 @@ from ..transcriber import WhisperTranscriber
 from ..video import extract_audio
 
 app = FastAPI(title="Soliloquy")
+templates = Jinja2Templates(directory=str(Path(__file__).parent / "templates"))
 
 _object_store: Optional[ObjectStore] = None
 
@@ -177,6 +179,12 @@ def post_report(
         raise HTTPException(
             status_code=404, detail=f"No entries for audience '{audience}' in the last {days} days."
         )
+    except RuntimeError as exc:
+        # ClaudeAnalyzer raises RuntimeError for a missing API key or a
+        # failed API call -- surface that real message instead of a
+        # generic 500, so "you forgot to set ANTHROPIC_API_KEY" is
+        # actually visible instead of an opaque Internal Server Error.
+        raise HTTPException(status_code=502, detail=str(exc))
     return PlainTextResponse(format_report(result, entries, audience, days))
 
 
@@ -200,3 +208,26 @@ def get_media(key: str, object_store: ObjectStore = Depends(get_object_store)):
             os.remove(local_path)
 
     return StreamingResponse(stream(), media_type=media_type)
+
+
+# ── HTML pages -- server-rendered, call the same functions the JSON
+# API routes above call. Forms on these pages submit to the JSON API
+# routes above via a few lines of inline fetch() (see the templates),
+# not a separate frontend framework/build step.
+
+@app.get("/", response_class=HTMLResponse)
+def entries_page(request: Request, store: EntryStore = Depends(get_store)):
+    entries = list(reversed(list_entries(store)))  # newest first for browsing
+    return templates.TemplateResponse(
+        request, "entries.html", {"entries": [_entry_to_dict(e) for e in entries]}
+    )
+
+
+@app.get("/new", response_class=HTMLResponse)
+def new_entry_page(request: Request):
+    return templates.TemplateResponse(request, "new_entry.html", {})
+
+
+@app.get("/report", response_class=HTMLResponse)
+def report_page(request: Request):
+    return templates.TemplateResponse(request, "report.html", {"audiences": AUDIENCES})

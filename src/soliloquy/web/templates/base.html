@@ -1,0 +1,32 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% block title %}Soliloquy{% endblock %}</title>
+  <style>
+    body { font-family: -apple-system, system-ui, sans-serif; max-width: 720px; margin: 2rem auto; padding: 0 1rem; color: #222; }
+    nav { display: flex; gap: 1rem; margin-bottom: 2rem; border-bottom: 1px solid #ddd; padding-bottom: 1rem; }
+    nav a { text-decoration: none; color: #2b5aa0; font-weight: 600; }
+    .entry { border: 1px solid #ddd; border-radius: 8px; padding: 1rem; margin-bottom: 1rem; }
+    .entry-meta { color: #777; font-size: 0.85rem; margin-bottom: 0.5rem; }
+    .entry audio, .entry video { max-width: 100%; display: block; margin: 0.5rem 0; }
+    .share-flags label { margin-right: 1rem; font-size: 0.9rem; }
+    fieldset { border: 1px solid #ddd; border-radius: 8px; margin-bottom: 1.5rem; }
+    textarea, input[type=text], input[type=number], select { width: 100%; box-sizing: border-box; padding: 0.5rem; margin-top: 0.25rem; }
+    button { padding: 0.5rem 1rem; cursor: pointer; }
+    .status { margin-top: 0.5rem; font-size: 0.9rem; }
+    .status.ok { color: #1a7f37; }
+    .status.error { color: #c0392b; }
+    pre.report { white-space: pre-wrap; background: #f6f6f6; padding: 1rem; border-radius: 8px; }
+  </style>
+</head>
+<body>
+  <nav>
+    <a href="/">Entries</a>
+    <a href="/new">New entry</a>
+    <a href="/report">Report</a>
+  </nav>
+  {% block content %}{% endblock %}
+</body>
+</html>

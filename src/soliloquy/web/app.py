@@ -36,6 +36,7 @@ from ..entry import Entry
 from ..mqtt_bridge import start_mqtt_listener
 from ..object_storage import ObjectStore
 from ..prompts import get_daily_prompt
+from ..tips import get_daily_tip
 from ..report import FORMATS, build_report_content, format_html, format_markdown, format_pdf, format_text
 from ..scheduler import start_scheduler
 from ..storage import EntryStore
@@ -348,7 +349,7 @@ def get_media(key: str, object_store: ObjectStore = Depends(get_object_store)):
 def entries_page(request: Request, store: EntryStore = Depends(get_store)):
     entries = list(reversed(list_entries(store)))  # newest first for browsing
     return templates.TemplateResponse(
-        request, "entries.html", {"entries": [_entry_to_dict(e) for e in entries]}
+        request, "entries.html", {"entries": [_entry_to_dict(e) for e in entries], "tip": get_daily_tip()}
     )
 
 
@@ -359,12 +360,13 @@ def new_entry_page(request: Request):
 
 @app.get("/report", response_class=HTMLResponse)
 def report_page(request: Request):
-    return templates.TemplateResponse(request, "report.html", {"audiences": AUDIENCES})
+    return templates.TemplateResponse(request, "report.html", {"audiences": AUDIENCES, "tip": get_daily_tip()})
 
 
 @app.get("/analysis", response_class=HTMLResponse)
 def analysis_page(request: Request, snapshot_store: AnalysisSnapshotStore = Depends(get_analysis_store)):
     snapshots = snapshot_store.recent(limit=10)
     return templates.TemplateResponse(
-        request, "analysis.html", {"snapshots": snapshots, "api_keys": _analyzer_key_status()}
+        request, "analysis.html",
+        {"snapshots": snapshots, "api_keys": _analyzer_key_status(), "tip": get_daily_tip()},
     )

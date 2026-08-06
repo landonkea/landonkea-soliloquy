@@ -3,6 +3,11 @@
 {% block content %}
   <h1>Entries</h1>
 
+  <div class="tip-box">
+    <div class="tip-label">A little something</div>
+    {{ tip }}
+  </div>
+
   {% if not entries %}
     <p class="empty-state">No entries yet. <a href="/new">Add one.</a></p>
   {% endif %}

@@ -2,6 +2,12 @@
 {% block title %}Report — Soliloquy{% endblock %}
 {% block content %}
   <h1>Report</h1>
+
+  <div class="tip-box">
+    <div class="tip-label">A little something</div>
+    {{ tip }}
+  </div>
+
   <p>Generates a readable write-up from entries in the date range. "self" includes everything;
      "partner"/"provider" only include entries explicitly marked shared with that audience.</p>
 

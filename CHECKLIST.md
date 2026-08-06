@@ -184,6 +184,18 @@ and the unrelated CRM/CMS + PWA project.
 - [x] 8 tests (`prompts.py`) + 1 web test confirming the page actually renders today's prompt.
       Verified visually in a real browser.
 
+## Extra: rotating encouraging tips ✅ done
+
+- [x] `tips.py` — 40 hand-written, genuine encouraging/practical mental-health tips (grounding
+      techniques, self-compassion reminders, DBT/CBT-style skills — not generic "just think
+      positive" phrasing), same deterministic daily rotation as `prompts.py`.
+- [x] Shown on Entries, Report, and Analysis pages (not New Entry, which already has its own
+      rotating journaling prompt — two different rotating boxes on one page would be clutter, not
+      double the value). Styled in the complement blue to visually distinguish from the orange
+      prompt box.
+- [x] 6 tests (`tips.py`) + 3 web tests confirming each of the three pages actually renders
+      today's tip. Verified visually in a real browser.
+
 ## Extra: one-click startup ✅ done
 
 - [x] `start.command` — double-click in Finder (or `./start.command`) to run everything: checks

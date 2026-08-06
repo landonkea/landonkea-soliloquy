@@ -108,6 +108,9 @@ fact — the recording is the whole interaction.
   day (deterministic, not random per page load — the same prompt shows all day). Shown on the New
   Entry page above all three entry methods, to cut down on blank-page hesitation before recording
   or typing.
+- **Rotating encouraging tips** (`tips.py`) — 40 hand-written, genuine mental-health tips
+  (grounding techniques, self-compassion reminders, practical DBT/CBT-style skills), same daily
+  rotation as the journaling prompts. Shown on the Entries, Report, and Analysis pages.
 - **Sharing flags and audience-filtered reports** — every entry has two independent flags,
   `shareable_with_partner` and `shareable_with_provider`, both defaulting to private/`False`.
   Deliberately NOT one "privacy level" — a partner and a therapist are different audiences with

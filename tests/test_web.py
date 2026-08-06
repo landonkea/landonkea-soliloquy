@@ -373,10 +373,40 @@ def test_report_page_loads_and_lists_all_audiences(client):
         assert audience in response.text
 
 
+def test_report_page_shows_todays_tip(client):
+    from markupsafe import escape
+
+    from soliloquy.tips import get_daily_tip
+
+    response = client.get("/report")
+
+    assert str(escape(get_daily_tip())) in response.text
+
+
 def test_analysis_page_loads_and_shows_a_message_when_empty(client):
     response = client.get("/analysis")
     assert response.status_code == 200
     assert "No automatic analysis yet" in response.text
+
+
+def test_analysis_page_shows_todays_tip(client):
+    from markupsafe import escape
+
+    from soliloquy.tips import get_daily_tip
+
+    response = client.get("/analysis")
+
+    assert str(escape(get_daily_tip())) in response.text
+
+
+def test_entries_page_shows_todays_tip(client):
+    from markupsafe import escape
+
+    from soliloquy.tips import get_daily_tip
+
+    response = client.get("/")
+
+    assert str(escape(get_daily_tip())) in response.text
 
 
 def test_analysis_page_shows_not_set_for_unconfigured_keys(client, monkeypatch):

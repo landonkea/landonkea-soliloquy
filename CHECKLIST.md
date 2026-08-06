@@ -174,6 +174,16 @@ and the unrelated CRM/CMS + PWA project.
       a real startup with `MQTT_HOST` pointed at a fake public hostname) — confirmed the correct
       one-liner prints both times.
 
+## Extra: journaling prompts ✅ done
+
+- [x] `prompts.py` — 116 hand-written prompts, one rotated in per calendar day (deterministic —
+      `date.toordinal() % len(PROMPTS)`, not random per page load, so the prompt is stable all
+      day and the sequence is reproducible). Cycle repeats every ~4 months.
+- [x] Shown on the New Entry page above all three entry methods (typed/audio/video) — the point
+      is reducing blank-page hesitation regardless of which way you're adding an entry.
+- [x] 8 tests (`prompts.py`) + 1 web test confirming the page actually renders today's prompt.
+      Verified visually in a real browser.
+
 ## Right after this
 
 - [ ] Test the video-capture flow from a real phone (not just desktop browser + synthesized test

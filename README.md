@@ -104,6 +104,10 @@ fact — the recording is the whole interaction.
   `deployment_mode.py` prints one line at startup describing whether it's currently in LOCAL mode
   (everything on localhost/a private address) or CLOUD mode (something's a public host) — purely
   informational today, doesn't change any actual behavior yet.
+- **Journaling prompts** (`prompts.py`) — 116 hand-written prompts, one rotated in per calendar
+  day (deterministic, not random per page load — the same prompt shows all day). Shown on the New
+  Entry page above all three entry methods, to cut down on blank-page hesitation before recording
+  or typing.
 - **Sharing flags and audience-filtered reports** — every entry has two independent flags,
   `shareable_with_partner` and `shareable_with_provider`, both defaulting to private/`False`.
   Deliberately NOT one "privacy level" — a partner and a therapist are different audiences with

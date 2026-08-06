@@ -3,6 +3,11 @@
 {% block content %}
   <h1>New entry</h1>
 
+  <div class="prompt-box">
+    <div class="prompt-label">Today's prompt</div>
+    <div class="prompt-text">{{ prompt }}</div>
+  </div>
+
   <fieldset>
     <legend>Typed entry</legend>
     <form id="text-form">

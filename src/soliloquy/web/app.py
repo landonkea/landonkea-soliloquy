@@ -27,17 +27,18 @@ from fastapi import Depends, FastAPI, File, Form, HTTPException, Request, Respon
 from fastapi.responses import HTMLResponse, PlainTextResponse, StreamingResponse
 from fastapi.templating import Jinja2Templates
 
+from ..actions import AUDIENCES, DEFAULT_DATABASE_URL, add_entry, list_entries, report_range
 from ..analysis_store import AnalysisSnapshotStore
 from ..analyzer import NoEntriesError, get_default_analyzer
-from ..actions import AUDIENCES, DEFAULT_DATABASE_URL, add_entry, list_entries, report_range
+from ..deployment_mode import describe_deployment_mode
 from ..entry import Entry
-from ..object_storage import ObjectStore
 from ..mqtt_bridge import start_mqtt_listener
+from ..object_storage import ObjectStore
+from ..prompts import get_daily_prompt
 from ..report import FORMATS, build_report_content, format_html, format_markdown, format_pdf, format_text
 from ..scheduler import start_scheduler
 from ..storage import EntryStore
 from ..transcriber import WhisperTranscriber
-from ..deployment_mode import describe_deployment_mode
 from ..video import extract_audio
 
 
@@ -295,7 +296,7 @@ def entries_page(request: Request, store: EntryStore = Depends(get_store)):
 
 @app.get("/new", response_class=HTMLResponse)
 def new_entry_page(request: Request):
-    return templates.TemplateResponse(request, "new_entry.html", {})
+    return templates.TemplateResponse(request, "new_entry.html", {"prompt": get_daily_prompt()})
 
 
 @app.get("/report", response_class=HTMLResponse)

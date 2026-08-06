@@ -324,6 +324,18 @@ def test_new_entry_page_loads(client):
     assert "New entry" in response.text
 
 
+def test_new_entry_page_shows_todays_prompt(client):
+    from markupsafe import escape
+
+    from soliloquy.prompts import get_daily_prompt
+
+    response = client.get("/new")
+
+    # Jinja2 autoescapes apostrophes (e.g. "What's" -> "What&#39;s"), so
+    # compare against the same escaping instead of the raw string.
+    assert str(escape(get_daily_prompt())) in response.text
+
+
 def test_report_page_loads_and_lists_all_audiences(client):
     response = client.get("/report")
     assert response.status_code == 200

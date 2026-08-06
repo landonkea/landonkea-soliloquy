@@ -2,12 +2,12 @@
 # web/app.py — the HTTP API, a thin layer over the existing package
 # ───────────────────────────────────────────────────────────────────
 # This does NOT duplicate business logic that already lives in
-# cli.py/the package -- every route calls the exact same functions
-# the CLI does (add_entry, list_entries, report_range, format_report,
-# EntryStore.update_sharing). The only genuinely new assembly logic
-# here is for audio/video uploads, because the web app's storage
-# target (object storage, addressed by key) differs from the CLI's
-# (a local file, addressed by path) -- see post_audio_entry().
+# actions.py -- every route calls the exact same functions the
+# scheduled analysis job and the MQTT bridge use (add_entry,
+# list_entries, report_range, EntryStore.update_sharing). The only
+# genuinely new assembly logic here is for audio/video uploads,
+# because the web app's storage target (object storage, addressed by
+# key) differs from a local path -- see post_audio_entry().
 #
 # Keeping real logic here (not in a browser-side JS framework) is
 # deliberate: a future native app becomes a new client of THIS API,
@@ -32,6 +32,7 @@ from ..analyzer import NoEntriesError, get_default_analyzer
 from ..actions import AUDIENCES, DEFAULT_DATABASE_URL, add_entry, list_entries, report_range
 from ..entry import Entry
 from ..object_storage import ObjectStore
+from ..mqtt_bridge import start_mqtt_listener
 from ..report import FORMATS, build_report_content, format_html, format_markdown, format_pdf, format_text
 from ..scheduler import start_scheduler
 from ..storage import EntryStore
@@ -41,15 +42,24 @@ from ..video import extract_audio
 
 @asynccontextmanager
 async def _lifespan(app: FastAPI):
-    # Disabled in tests (see tests/test_web.py) so the test suite
-    # doesn't spin up a real background timer against the test
-    # database on every TestClient instantiation.
+    # Both disabled in tests (see tests/test_web.py) so the test suite
+    # doesn't spin up a real background timer/MQTT connection against
+    # the test database on every TestClient instantiation.
     scheduler = None
     if os.environ.get("SOLILOQUY_DISABLE_SCHEDULER") != "1":
         scheduler = start_scheduler()
+
+    mqtt_client = None
+    if os.environ.get("SOLILOQUY_DISABLE_MQTT") != "1":
+        mqtt_client = start_mqtt_listener()
+
     yield
+
     if scheduler is not None:
         scheduler.shutdown(wait=False)
+    if mqtt_client is not None:
+        mqtt_client.loop_stop()
+        mqtt_client.disconnect()
 
 
 app = FastAPI(title="Soliloquy", lifespan=_lifespan)

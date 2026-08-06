@@ -134,10 +134,16 @@ Out of scope for now (confirmed with the user, not forgotten): the MQTT bridge t
 
 ## In progress: MQTT bridge to makeItSoNumberOne
 
-- [ ] Soliloquy side: `mqtt_bridge.py` (subscriber) + Mosquitto broker in `docker-compose.yml`
+- [x] Soliloquy side: `mqtt_bridge.py` (`handle_message()` directly testable, `start_mqtt_listener()`
+      wired into the web app's lifespan) + Mosquitto broker in `docker-compose.yml`
+      (anonymous-auth, local-only, mirrors the Postgres/MinIO posture)
+- [x] Real end-to-end verification: brought up the real Mosquitto container, published a real
+      `{"text": "..."}` message with `paho-mqtt`, confirmed a real entry appeared via the API AND
+      rendered on the Entries page in a real browser
+- [x] 5 tests for `handle_message()` (malformed JSON, missing/empty text, non-dict payload, real
+      success path) against real Postgres, no broker needed for those
 - [ ] `landonkea-makeItSoNumberOne` side: `journal_entry` plugin (publisher), following that
-      repo's own documented third-party-plugin pattern
-- [ ] Real end-to-end verification: publish a real MQTT message, confirm a real entry appears
+      repo's own documented third-party-plugin pattern -- not started yet
 
 ## Right after this
 

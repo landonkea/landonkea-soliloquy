@@ -2,8 +2,9 @@ import os
 
 # Must be set before soliloquy.web.app is imported / TestClient triggers
 # the app's startup event -- otherwise every test run spins up a real
-# background scheduler hitting the test database on a timer.
+# background scheduler/MQTT connection against the test database.
 os.environ.setdefault("SOLILOQUY_DISABLE_SCHEDULER", "1")
+os.environ.setdefault("SOLILOQUY_DISABLE_MQTT", "1")
 
 import subprocess
 import sys

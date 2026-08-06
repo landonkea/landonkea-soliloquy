@@ -1,8 +1,10 @@
 # Local self-hosted dev environment: Postgres (entries/metadata) + MinIO
-# (S3-compatible object storage for audio/video files). Both speak standard
-# protocols (Postgres wire protocol, S3 API) specifically so switching to
-# managed cloud later (Supabase/Neon, Cloudflare R2) is a connection-string/
-# endpoint change, not a rewrite -- see README's storage section.
+# (S3-compatible object storage for audio/video files) + Mosquitto (MQTT
+# broker, for the voice-triggered journal-entry bridge -- see
+# mqtt_bridge.py). Postgres/MinIO speak standard protocols specifically so
+# switching to managed cloud later (Supabase/Neon, Cloudflare R2) is a
+# connection-string/endpoint change, not a rewrite -- see README's storage
+# section.
 services:
   postgres:
     image: postgres:16
@@ -29,6 +31,15 @@ services:
     volumes:
       - soliloquy_minio_data:/data
 
+  mosquitto:
+    image: eclipse-mosquitto:2
+    ports:
+      - "1883:1883"
+    volumes:
+      - ./mosquitto/mosquitto.conf:/mosquitto/config/mosquitto.conf:ro
+      - soliloquy_mosquitto_data:/mosquitto/data
+
 volumes:
   soliloquy_postgres_data:
   soliloquy_minio_data:
+  soliloquy_mosquitto_data:

@@ -1,0 +1,8 @@
+# Reverse proxy so soliloquy.local (no port -- HTTP defaults to port
+# 80) transparently forwards to the actual app on port 8000. The
+# browser's address bar stays exactly "soliloquy.local", never shows
+# a port, since this is a real proxy (content is fetched from :8000
+# and returned as if it came from :80), not a redirect.
+:80 {
+	reverse_proxy localhost:8000
+}

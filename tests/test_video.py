@@ -8,16 +8,16 @@ from soliloquy.video import FfmpegNotFoundError, extract_audio
 
 
 def test_extract_audio_raises_a_clear_error_if_ffmpeg_is_not_installed(tmp_path):
-    with patch("soliloquy.video.shutil.which", return_value=None):
+    with patch("soliloquy.ffmpeg_utils.shutil.which", return_value=None):
         with pytest.raises(FfmpegNotFoundError, match="ffmpeg not found"):
             extract_audio("in.mp4", str(tmp_path / "out.wav"))
 
 
 def test_extract_audio_raises_runtime_error_if_ffmpeg_exits_nonzero(tmp_path):
     fake_result = subprocess.CompletedProcess(args=[], returncode=1, stdout="", stderr="no such file")
-    with patch("soliloquy.video.shutil.which", return_value="/usr/bin/ffmpeg"):
-        with patch("soliloquy.video.subprocess.run", return_value=fake_result):
-            with pytest.raises(RuntimeError, match="ffmpeg failed to extract audio"):
+    with patch("soliloquy.ffmpeg_utils.shutil.which", return_value="/usr/bin/ffmpeg"):
+        with patch("soliloquy.ffmpeg_utils.subprocess.run", return_value=fake_result):
+            with pytest.raises(RuntimeError, match="ffmpeg failed"):
                 extract_audio("in.mp4", str(tmp_path / "out.wav"))
 
 

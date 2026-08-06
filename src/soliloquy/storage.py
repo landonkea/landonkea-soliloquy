@@ -157,6 +157,14 @@ class EntryStore:
         cursor = self._conn.execute(f"UPDATE entries SET {', '.join(updates)} WHERE id = %s", params)
         return cursor.rowcount > 0
 
+    def update_transcript(self, entry_id: str, transcript: str) -> bool:
+        """Manually correct an entry's transcript -- e.g. fixing a
+        transcription mistake. Returns False if entry_id doesn't exist."""
+        cursor = self._conn.execute(
+            "UPDATE entries SET transcript = %s WHERE id = %s", (transcript, entry_id)
+        )
+        return cursor.rowcount > 0
+
     def update_video_path(self, entry_id: str, video_path: str) -> bool:
         """Set video_path on an existing entry -- used by the video
         upload flow, which creates the Entry from the extracted audio's

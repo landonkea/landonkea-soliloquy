@@ -100,9 +100,21 @@
     .entry audio, .entry video {
       max-width: 100%;
       display: block;
-      margin: 0.6rem 0;
       border-radius: 10px;
     }
+    .media-with-volume { margin: 0.6rem 0; }
+    .volume-control {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      font-size: 0.8rem;
+      color: var(--text-muted);
+      margin-top: 0.4rem;
+      font-weight: 600;
+    }
+    .volume-control input[type=range] { width: 140px; margin: 0; accent-color: var(--complement); }
+
+    .transcript-edit { min-height: 4rem; }
 
     .share-flags {
       display: flex;

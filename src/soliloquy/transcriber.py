@@ -33,7 +33,7 @@ class WhisperTranscriber:
     device -- see this module's docstring for why that matters here.
     """
 
-    def __init__(self, model_size: str = "base", device: str = "cpu", compute_type: str = "int8"):
+    def __init__(self, model_size: str = "small", device: str = "cpu", compute_type: str = "int8"):
         self.model_size = model_size
         self.device = device
         self.compute_type = compute_type

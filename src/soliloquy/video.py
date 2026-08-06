@@ -17,13 +17,9 @@
 
 from __future__ import annotations
 
-import shutil
-import subprocess
+from .ffmpeg_utils import FfmpegNotFoundError, run_ffmpeg
 
-
-class FfmpegNotFoundError(RuntimeError):
-    """Raised when the `ffmpeg` binary isn't on PATH -- a clearer error
-    than the FileNotFoundError subprocess would otherwise raise."""
+__all__ = ["FfmpegNotFoundError", "extract_audio"]
 
 
 def extract_audio(video_path: str, output_audio_path: str) -> None:
@@ -31,22 +27,10 @@ def extract_audio(video_path: str, output_audio_path: str) -> None:
     at `output_audio_path`, ready for the existing Transcriber. Raises
     FfmpegNotFoundError if ffmpeg isn't installed, or RuntimeError if
     ffmpeg runs but fails (e.g. the video has no audio track)."""
-    if shutil.which("ffmpeg") is None:
-        raise FfmpegNotFoundError(
-            "ffmpeg not found on PATH -- install it (e.g. `brew install ffmpeg` on macOS) "
-            "to extract audio from video."
-        )
-
-    result = subprocess.run(
-        [
-            "ffmpeg", "-y", "-i", video_path,
-            "-vn",                       # no video in the output
-            "-acodec", "pcm_s16le",      # 16-bit PCM, matches what the transcriber expects
-            "-ar", "16000", "-ac", "1",  # 16kHz mono -- what Whisper wants anyway
-            output_audio_path,
-        ],
-        capture_output=True,
-        text=True,
-    )
-    if result.returncode != 0:
-        raise RuntimeError(f"ffmpeg failed to extract audio from {video_path}: {result.stderr}")
+    run_ffmpeg([
+        "-y", "-i", video_path,
+        "-vn",                       # no video in the output
+        "-acodec", "pcm_s16le",      # 16-bit PCM, matches what the transcriber expects
+        "-ar", "16000", "-ac", "1",  # 16kHz mono -- what Whisper wants anyway
+        output_audio_path,
+    ])

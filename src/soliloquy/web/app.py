@@ -40,6 +40,8 @@ from ..tips import get_daily_tip
 from ..report import FORMATS, build_report_content, format_html, format_markdown, format_pdf, format_text
 from ..scheduler import start_scheduler
 from ..storage import EntryStore
+from .. import noise_reduction
+from ..noise_reduction import isolate_voice_and_normalize
 from ..transcriber import WhisperTranscriber
 from ..video import extract_audio
 
@@ -49,6 +51,10 @@ logger = logging.getLogger(__name__)
 @asynccontextmanager
 async def _lifespan(app: FastAPI):
     print(describe_deployment_mode(), flush=True)
+
+    # Must happen on the main thread, before any request can reach a
+    # worker thread -- see noise_reduction.preload()'s docstring.
+    noise_reduction.preload()
 
     # Both disabled in tests (see tests/test_web.py) so the test suite
     # doesn't spin up a real background timer/MQTT connection against
@@ -153,9 +159,18 @@ def _save_upload_to_temp(upload: UploadFile, default_suffix: str) -> str:
 def _upload_and_transcribe_audio(object_store: ObjectStore, audio_path: str) -> tuple[str, str]:
     """Shared by post_audio_entry and post_video_entry (whose extracted
     audio track goes through the exact same store-then-transcribe
-    step) -- returns (object storage key, transcript)."""
-    transcript = WhisperTranscriber().transcribe(audio_path)
-    key = object_store.upload_file(audio_path, f"audio/{uuid.uuid4()}{Path(audio_path).suffix}")
+    step) -- returns (object storage key, transcript).
+
+    Runs voice isolation + loudness normalization first, so both the
+    stored audio and the transcript come from the cleaned-up version,
+    not the raw upload."""
+    cleaned_path = f"{audio_path}.cleaned.wav"
+    isolate_voice_and_normalize(audio_path, cleaned_path)
+    try:
+        transcript = WhisperTranscriber().transcribe(cleaned_path)
+        key = object_store.upload_file(cleaned_path, f"audio/{uuid.uuid4()}.wav")
+    finally:
+        os.remove(cleaned_path)
     return key, transcript
 
 
@@ -230,6 +245,18 @@ def share_entry(
     updated = store.update_sharing(
         entry_id, shareable_with_partner=partner, shareable_with_provider=provider
     )
+    if not updated:
+        raise HTTPException(status_code=404, detail=f"No entry found with id {entry_id}")
+    return _entry_to_dict(store.get(entry_id))
+
+
+@app.post("/entries/{entry_id}/transcript")
+def update_transcript(
+    entry_id: str,
+    transcript: str = Form(...),
+    store: EntryStore = Depends(get_store),
+):
+    updated = store.update_transcript(entry_id, transcript)
     if not updated:
         raise HTTPException(status_code=404, detail=f"No entry found with id {entry_id}")
     return _entry_to_dict(store.get(entry_id))

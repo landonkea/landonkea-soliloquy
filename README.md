@@ -111,6 +111,12 @@ fact — the recording is the whole interaction.
 - **Rotating encouraging tips** (`tips.py`) — 40 hand-written, genuine mental-health tips
   (grounding techniques, self-compassion reminders, practical DBT/CBT-style skills), same daily
   rotation as the journaling prompts. Shown on the Entries, Report, and Analysis pages.
+- **Voice isolation + loudness normalization** (`noise_reduction.py`) — every audio/video upload
+  is run through DeepFilterNet3 (a neural model trained to separate speech from background noise,
+  including irregular sounds like wind or a dog barking, not just steady hiss) before
+  transcription and storage, then normalized with ffmpeg so quiet and loud entries come out
+  consistent and just under clipping. See its module docstring for the real installation/threading
+  issues found and worked around along the way.
 - **Sharing flags and audience-filtered reports** — every entry has two independent flags,
   `shareable_with_partner` and `shareable_with_provider`, both defaulting to private/`False`.
   Deliberately NOT one "privacy level" — a partner and a therapist are different audiences with
@@ -140,7 +146,10 @@ Manual equivalent, if you'd rather run it yourself:
 docker compose up -d       # local Postgres (port 5433), MinIO (port 9000), Mosquitto (port 1883)
 python3 -m venv .venv && source .venv/bin/activate
 pip install -e ".[dev,web,transcribe]"
-# macOS also needs: brew install ffmpeg   (used to extract audio from uploaded video)
+# macOS also needs: brew install ffmpeg   (used to extract audio from uploaded video, and by the
+# voice-isolation/normalization step below)
+# The `transcribe` extra also installs DeepFilterNet, which needs a Rust toolchain to build its
+# native dependency -- if you don't have Rust: https://rustup.rs (official installer, one-time)
 
 python -m soliloquy.web    # runs the web app at http://localhost:8000
 ```
@@ -163,6 +172,6 @@ the one-time test database first:
 ```bash
 docker compose up -d
 psql postgresql://soliloquy:soliloquy@localhost:5433/soliloquy -c "CREATE DATABASE soliloquy_test"
-pip install -e ".[dev,web]"
+pip install -e ".[dev,web,transcribe]"
 pytest -v
 ```

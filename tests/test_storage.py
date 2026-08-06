@@ -112,6 +112,18 @@ def test_update_video_path_returns_false_for_an_unknown_entry_id(store):
     assert store.update_video_path("does-not-exist", "videos/x.mp4") is False
 
 
+def test_update_transcript_corrects_an_existing_entry(store):
+    entry = Entry(transcript="a bad transcription")
+    store.add(entry)
+
+    assert store.update_transcript(entry.id, "the corrected version") is True
+    assert store.get(entry.id).transcript == "the corrected version"
+
+
+def test_update_transcript_returns_false_for_an_unknown_entry_id(store):
+    assert store.update_transcript("does-not-exist", "text") is False
+
+
 def test_entrystore_works_as_a_context_manager():
     with EntryStore(TEST_DATABASE_URL) as store:
         store._conn.execute("TRUNCATE TABLE entries")

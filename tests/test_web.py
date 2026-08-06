@@ -55,7 +55,13 @@ def _clean_db():
 
 @pytest.fixture
 def client():
-    return TestClient(app)
+    # Must use TestClient as a context manager -- otherwise FastAPI's
+    # lifespan (startup/shutdown) never runs at all, including
+    # noise_reduction.preload(), which matters here: see its
+    # docstring for why torch has to load on this thread, not a
+    # request worker thread.
+    with TestClient(app) as c:
+        yield c
 
 
 def _silent_wav_bytes(seconds: float = 1.0) -> bytes:
@@ -104,6 +110,22 @@ def test_share_entry_sets_the_requested_flag(client):
 
 def test_share_entry_returns_404_for_an_unknown_id(client):
     response = client.post("/entries/does-not-exist/share", data={"partner": "true"})
+    assert response.status_code == 404
+
+
+def test_update_transcript_corrects_an_existing_entry(client):
+    created = client.post("/entries", data={"text": "a bad transcription"}).json()
+
+    response = client.post(f"/entries/{created['id']}/transcript", data={"transcript": "corrected text"})
+
+    assert response.status_code == 200
+    assert response.json()["transcript"] == "corrected text"
+    with EntryStore(TEST_DATABASE_URL) as store:
+        assert store.get(created["id"]).transcript == "corrected text"
+
+
+def test_update_transcript_returns_404_for_an_unknown_id(client):
+    response = client.post("/entries/does-not-exist/transcript", data={"transcript": "text"})
     assert response.status_code == 404
 
 
@@ -240,7 +262,11 @@ def test_post_audio_entry_transcribes_and_stores_a_real_audio_key(client):
 
     response = client.get(f"/media/{body['audio_path']}")
     assert response.status_code == 200
-    assert response.content == _silent_wav_bytes()
+    # Not byte-identical to the upload -- the stored audio goes through
+    # voice isolation + normalization first (see noise_reduction.py),
+    # so just confirm it's a real, non-empty WAV file.
+    assert response.content.startswith(b"RIFF")
+    assert len(response.content) > 0
 
 
 def _synthesize_test_video(path: str, duration: float = 1.0) -> None:
@@ -288,7 +314,10 @@ def _synthesize_test_m4a(path: str, duration: float = 1.0) -> None:
 def test_post_audio_entry_accepts_a_real_m4a_file(client, tmp_path):
     # Not a hardcoded special case anywhere in the pipeline -- ffmpeg/
     # faster-whisper detect format from file contents, not extension.
-    # This proves it with a real file rather than assuming it.
+    # This proves it with a real file rather than assuming it. The
+    # voice-isolation + normalization pass (noise_reduction.py) always
+    # outputs WAV regardless of the input container, so the stored
+    # path ends in .wav rather than preserving .m4a.
     m4a_path = tmp_path / "entry.m4a"
     _synthesize_test_m4a(str(m4a_path))
     fake_module = _install_fake_faster_whisper([" from an m4a file "])
@@ -301,12 +330,14 @@ def test_post_audio_entry_accepts_a_real_m4a_file(client, tmp_path):
 
     assert response.status_code == 200
     body = response.json()
-    assert body["audio_path"].endswith(".m4a")
+    assert body["audio_path"].endswith(".wav")
     assert body["transcript"] == "from an m4a file"
 
     media_response = client.get(f"/media/{body['audio_path']}")
     assert media_response.status_code == 200
-    assert media_response.headers["content-type"] == "audio/mp4"
+    # The stored file is always the cleaned-up WAV, not the original
+    # upload -- see noise_reduction.py.
+    assert media_response.headers["content-type"] == "audio/wav"
 
 
 def test_post_video_entry_accepts_a_real_mkv_file(client, tmp_path):

@@ -260,11 +260,98 @@ and the unrelated CRM/CMS + PWA project.
   signaling the already-loaded daemon); a full config change like this fix needed one manual
   `sudo brew services restart dnsmasq` to take effect.
 
+## Extra: `soliloquy.local` via real mDNS + Caddy (no port, no per-device DNS) ✅ done
+
+- **Pivoted away from `soliloquy.internal`/dnsmasq**: that approach required pointing every
+  device's own DNS settings at this Mac, which was explicitly rejected. Also explicitly rejected:
+  renaming the Mac itself (`ComputerName`/`LocalHostName`) — this machine runs ~20 other
+  apps/repos that would each need their own name, so the Mac's own identity has to stay untouched.
+- [x] `scripts/soliloquy-mdns.sh` + `~/Library/LaunchAgents/com.soliloquy.mdns.plist` (not
+      tracked, machine-specific) — registers a real, separate mDNS service name
+      (`soliloquy.local`) via `dns-sd -P`, independent of the Mac's own Bonjour hostname. Re-checks
+      the LAN IP and re-registers on change, same self-healing pattern as the dnsmasq script.
+      Verified `scutil --get LocalHostName` is unchanged (still `Landons-MacBook-Pro`) before and
+      after.
+- [x] Caddy (`brew install caddy`, `Caddyfile` at repo root + `/opt/homebrew/etc/Caddyfile`) — a
+      reverse proxy (not a redirect: the browser talks to Caddy on port 80 the whole time, Caddy
+      forwards to the app on 8000 behind the scenes) so `http://soliloquy.local` works with no
+      port typed at all.
+- **Real bug found and fixed**: Caddy silently failed to bind port 80 because an unrelated,
+  orphaned `docker-web-1` (nginx) container — 12 days old, from a since-deleted project directory
+  — was already holding it. Per explicit instruction, stopped ALL running Docker containers, then
+  brought Soliloquy's own stack back up plus Caddy; confirmed clean afterward.
+- [x] Verified for real: `curl http://soliloquy.local/` (no port) → 200 with the correct page
+      title, then confirmed again in an actual browser on this Mac.
+- **Same manual step as `.internal` before it**: still requires each device to resolve mDNS
+  (`.local`), which most phones/laptops do out of the box with zero configuration — that's the
+  whole point of this pivot versus dnsmasq.
+
+## Extra: color scheme, code refactor pass, analysis/report defaults ✅ done
+
+- [x] Default color scheme: light diffused orange primary (`--accent`) + its true color-wheel
+      complement, a muted slate blue (`--complement`) — used purposefully (secondary buttons,
+      tip-box vs prompt-box, "Upload from device" vs "Record now"), not a flat 50/50 split so
+      orange stays the dominant note. Lives in `base.html`'s `:root` CSS variables.
+- [x] Refactor pass across the whole codebase: `pyflakes`-clean, `_HttpAnalyzer` base class in
+      `analyzer.py` collapsing ~90 duplicated lines across the three provider classes,
+      `_entries_in_last_days()` extracted in `actions.py`, `_topics_line()` extracted in
+      `report.py`, `_upload_and_transcribe_audio()` + a single `_REPORT_FORMATS` dict replacing
+      three parallel dicts in `web/app.py`.
+- [x] Analysis page now shows OpenRouter/Gemini/Claude API key status (masked — first 4 + last 4
+      characters, never the full key — or "Not set") so it's visible at a glance without touching
+      environment variables.
+- [x] Report page defaults changed: 30 days (was 7), markdown format (was text).
+
+## Extra: volume slider, manual transcript editing, better transcription ✅ done
+
+- [x] Real `<input type="range">` volume slider on every audio/video player (previously native
+      browser controls acted like a plain on/off mute toggle, not a slider).
+- [x] `WhisperTranscriber`'s default model upgraded from `"base"` to `"small"` (~2GB RAM, ~3-4x
+      realtime on CPU) for meaningfully better transcription accuracy.
+- [x] Manual transcript editing: `store.update_transcript()` + `POST /entries/{id}/transcript` +
+      inline edit/save/cancel UI on the Entries page — so a wrong word/phrase can be fixed by hand
+      without needing to re-record.
+- [x] **Voice isolation + loudness normalization** (`noise_reduction.py`), run on every audio/video
+      upload before transcription and storage:
+  - DeepFilterNet3 (a real neural network trained to separate speech from background noise, not
+    just a steady-hiss filter) — chosen specifically because it also handles *irregular* noise
+    (wind, a dog barking, sheets moving), which a simpler ffmpeg-only filter can't.
+  - ffmpeg's `speechnorm` + `alimiter` afterward — brings quiet passages up and caps everything
+    just under clipping, so recordings come out consistent without ever needing to raise your
+    voice.
+  - **Real, non-trivial installation blocker resolved**: DeepFilterNet's native dependency
+    (`deepfilterlib`) needs a Rust toolchain to build — installed via `rustup` (official installer,
+    one-time). Then DeepFilterNet's own bundled `torchaudio` usage turned out to reference APIs
+    (`torchaudio.backend.common.AudioMetaData`, `torchaudio.load`/`save`/`info`) that current
+    torchaudio releases have removed entirely — worked around by stubbing the missing import (we
+    never call DeepFilterNet's own file I/O) and doing all real audio I/O ourselves via `ffmpeg` +
+    `soundfile` instead. See `noise_reduction.py`'s module docstring.
+  - **Real crash found and fixed**: torch's compiled C extension segfaults if it's first
+    initialized on a non-main thread. FastAPI/Starlette run regular (sync) route handlers in a
+    background worker thread pool, so the first upload would reliably crash the whole process.
+    Fixed with `noise_reduction.preload()`, called from the app's startup lifecycle (`_lifespan`)
+    so torch loads on the main thread before any request can reach a worker thread. Also fixed the
+    test fixture, which was creating `TestClient(app)` without a `with` block — meaning FastAPI's
+    startup/shutdown lifecycle (and therefore `preload()`) never ran in tests at all, masking the
+    bug there.
+  - Shared `ffmpeg_utils.py` extracted (`run_ffmpeg()`, `FfmpegNotFoundError`) so `video.py` and
+    `noise_reduction.py` don't each duplicate "is ffmpeg on PATH / did it exit non-zero" handling.
+  - Verified live against the real running server (not just tests): real audio upload → denoised,
+    normalized, transcribed, stored — twice in a row, clean shutdown, no crash.
+  - **Not yet validated against a real human voice recording** — testing so far used macOS's
+    built-in text-to-speech (`say`) mixed with synthetic noise, since that's what's scriptable
+    here. DeepFilterNet is trained on real human speech and may behave differently (likely
+    better) on an actual recorded voice than on TTS audio. Worth a real test recording once you're
+    using the app normally.
+
 ## Right after this
 
 - [ ] Test the video-capture flow from a real phone (not just desktop browser + synthesized test
       video) — this is the one part of the original ask ("record with the phone's camera app,
       then hand the file to Soliloquy") not yet verified on an actual phone
+- [ ] Record a real journal entry with your actual voice to hear how DeepFilterNet + normalization
+      actually sounds — everything so far has been verified with synthesized TTS audio, not a real
+      human recording
 - [ ] Set a real `ANTHROPIC_API_KEY`/`OPENROUTER_API_KEY`/`GEMINI_API_KEY` to verify the
       Report/Analysis happy path end-to-end (currently only the error path is verified here)
 - [ ] Decide on and implement real LAN/cloud security hardening (see above) — `deployment_mode.py`

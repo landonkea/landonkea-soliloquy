@@ -12,8 +12,8 @@ standard protocols (Postgres wire protocol, S3 API) — moving later is a config
 rewrite. Real backend API + thin web frontend (not logic baked into the browser) so a native app
 later becomes a new client of the same API, not a second implementation.
 
-Out of scope for now (confirmed with the user, not forgotten): the MQTT bridge to
-`makeItSoNumberOne`, face/expression analysis of video, and the unrelated CRM/CMS + PWA project.
+Out of scope for now (confirmed with the user, not forgotten): face/expression analysis of video,
+and the unrelated CRM/CMS + PWA project.
 
 ## Stage 1 — Storage: Postgres + MinIO ✅ done
 
@@ -155,6 +155,25 @@ Out of scope for now (confirmed with the user, not forgotten): the MQTT bridge t
   imports beyond a local relative import and the generic `paho-mqtt` package). To actually use
   this for real, `pip install paho-mqtt` in whichever environment runs `make_it_so.py`.
 
+## Extra: LAN reachability confirmed + local-vs-cloud awareness ✅ done
+
+- **Confirmed live, not assumed**: the web app (`uvicorn` binds `0.0.0.0`) and Postgres/MinIO/
+  Mosquitto (all `docker-compose` port publishes are `0.0.0.0`, not `127.0.0.1`) are ALL already
+  reachable from any device on the LAN today, no code change needed — verified by hitting this
+  machine's actual LAN IP from `curl` and getting real responses back.
+- **Known real gap, not yet addressed**: because of the above, Postgres/MinIO's default dev
+  credentials and Mosquitto's anonymous auth are reachable by anything else on the same network,
+  not just this machine. Fine for a single trusted home LAN; worth locking down (real
+  credentials, auth on Mosquitto, or binding those three to `127.0.0.1` while leaving only the
+  web app on `0.0.0.0`) before using this somewhere less trusted.
+- [x] `deployment_mode.py` — `get_deployment_mode()` inspects `DATABASE_URL`/`S3_ENDPOINT_URL`/
+      `MQTT_HOST` and returns `"local"` if all resolve to localhost/a private LAN address, or
+      `"cloud"` if any is a real public host. Purely informational (no refuse-to-start, no loud
+      warning, per explicit direction) — prints one line at web app startup via
+      `describe_deployment_mode()`. 10 tests; verified live in both modes (real local startup, and
+      a real startup with `MQTT_HOST` pointed at a fake public hostname) — confirmed the correct
+      one-liner prints both times.
+
 ## Right after this
 
 - [ ] Test the video-capture flow from a real phone (not just desktop browser + synthesized test
@@ -162,13 +181,8 @@ Out of scope for now (confirmed with the user, not forgotten): the MQTT bridge t
       then hand the file to Soliloquy") not yet verified on an actual phone
 - [ ] Set a real `ANTHROPIC_API_KEY`/`OPENROUTER_API_KEY`/`GEMINI_API_KEY` to verify the
       Report/Analysis happy path end-to-end (currently only the error path is verified here)
-- [x] More upload formats (`.m4a`, `.mkv`, etc.) — verified with real ffmpeg-synthesized files
-      (not assumed): `ffmpeg`'s audio extraction handles a real `.mkv` with zero code changes, and
-      `faster-whisper` transcribes a real `.m4a` directly, both because they detect format from
-      file contents, not extension. The one real fix: expanded `/media/{key}`'s content-type map
-      (`.m4a`, `.ogg`, `.flac`, `.aac`, `.mkv`, `.avi`) for correct browser playback headers.
-      Some containers (`.mkv` especially) still won't play back in most browsers regardless of a
-      correct header — a browser codec-support limitation, not something fixable here.
+- [ ] Decide on and implement real LAN/cloud security hardening (see above) — `deployment_mode.py`
+      only describes the situation today, it doesn't yet change any actual behavior
 
 ## After that (not started, no immediate plan)
 

@@ -95,6 +95,15 @@ fact — the recording is the whole interaction.
   saves a Soliloquy entry. Text-only for now — the voice assistant already transcribes the
   command before publishing, so relaying that transcript is the simple, robust v1; sending raw
   audio over MQTT is a heavier future enhancement, not needed for this to work end-to-end.
+- **LAN reachability + local-vs-cloud awareness**: confirmed live (not assumed) that the web app
+  and all three backends (Postgres/MinIO/Mosquitto) are already reachable from any device on your
+  LAN by default — the web server binds `0.0.0.0`, and every `docker-compose` port publish does
+  too. That's convenient for using this from a phone on the same network, but it also means the
+  default dev credentials are reachable by anything else on that network, not just this machine —
+  worth real hardening before using this somewhere less trusted than a home LAN.
+  `deployment_mode.py` prints one line at startup describing whether it's currently in LOCAL mode
+  (everything on localhost/a private address) or CLOUD mode (something's a public host) — purely
+  informational today, doesn't change any actual behavior yet.
 - **Sharing flags and audience-filtered reports** — every entry has two independent flags,
   `shareable_with_partner` and `shareable_with_provider`, both defaulting to private/`False`.
   Deliberately NOT one "privacy level" — a partner and a therapist are different audiences with

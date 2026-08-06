@@ -37,11 +37,14 @@ from ..report import FORMATS, build_report_content, format_html, format_markdown
 from ..scheduler import start_scheduler
 from ..storage import EntryStore
 from ..transcriber import WhisperTranscriber
+from ..deployment_mode import describe_deployment_mode
 from ..video import extract_audio
 
 
 @asynccontextmanager
 async def _lifespan(app: FastAPI):
+    print(describe_deployment_mode(), flush=True)
+
     # Both disabled in tests (see tests/test_web.py) so the test suite
     # doesn't spin up a real background timer/MQTT connection against
     # the test database on every TestClient instantiation.

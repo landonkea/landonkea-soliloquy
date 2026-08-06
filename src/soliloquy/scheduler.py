@@ -29,7 +29,7 @@ from apscheduler.schedulers.background import BackgroundScheduler
 
 from .analysis_store import AnalysisSnapshot, AnalysisSnapshotStore
 from .analyzer import Analyzer, NoEntriesError, get_default_analyzer
-from .cli import DEFAULT_DATABASE_URL, analyze_range
+from .actions import DEFAULT_DATABASE_URL, analyze_range
 from .storage import EntryStore
 
 logger = logging.getLogger(__name__)

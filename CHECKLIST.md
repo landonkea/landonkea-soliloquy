@@ -23,15 +23,15 @@ Out of scope for now (confirmed with the user, not forgotten): the MQTT bridge t
       nothing above it had to change
 - [x] `object_storage.py` — S3-compatible client (`boto3`) for audio/video files
 - [x] `Entry` gains `video_path`, independent of `audio_path`
-- [x] CLI (`cli.py`) points at `DATABASE_URL` (defaults to the local docker-compose instance)
+- [x] App points at `DATABASE_URL` (defaults to the local docker-compose instance)
 - [x] CI runs against real Postgres + MinIO service containers, not mocks
 - [x] All existing tests pass against the real Postgres backend (68 tests)
 
 ## Stage 2 — Backend API (FastAPI) ✅ done
 
 - [x] `src/soliloquy/web/app.py` — thin FastAPI layer over the existing package functions
-      (`add_entry`, `list_entries`, `report_range`, `format_report`, `store.update_sharing`) — no
-      business logic duplicated into the web layer
+      (`add_entry`, `list_entries`, `report_range`, `store.update_sharing`) — no business logic
+      duplicated into the web layer
 - [x] Routes: `GET/POST /entries`, `POST /entries/audio`, `POST /entries/{id}/share`,
       `POST /reports`, `GET /media/{key}`
 - [x] `python -m soliloquy.web` (or the `soliloquy-web` console script) runs it via `uvicorn`
@@ -40,8 +40,8 @@ Out of scope for now (confirmed with the user, not forgotten): the MQTT bridge t
 
 ## Stage 3 — Video capture ✅ done
 
-- [x] `src/soliloquy/video.py` — `extract_audio()` via `ffmpeg`, same "wrap a real external tool"
-      pattern as `recorder.py`'s `pyaudio` use
+- [x] `src/soliloquy/video.py` — `extract_audio()` via `ffmpeg`, wraps a real external tool the
+      same way the (now-removed) CLI-only recorder used to wrap `pyaudio`
 - [x] Tested against a real synthesized test video (ffmpeg's own `lavfi` test source), not just
       mocks (3 tests) — plus an end-to-end test of the upload route against real Postgres + MinIO
 - [x] `POST /entries/video` route: upload video → store in object storage → extract audio → store
@@ -70,7 +70,6 @@ Out of scope for now (confirmed with the user, not forgotten): the MQTT bridge t
 
 - [x] `src/soliloquy/report.py` — one shared `ReportContent`, rendered four ways:
       `format_text`, `format_markdown`, `format_html`, `format_pdf` (via `fpdf2`, no system deps)
-- [x] CLI: `soliloquy report --format text|markdown|html|pdf` (`pdf` requires `--output`)
 - [x] Web: Report page has a Format selector; download link + inline preview (text/markdown show
       as `<pre>`, html previews in an iframe, pdf previews in an embedded viewer) for all four
 - [x] Real bug caught and fixed during this: `fpdf2`'s `multi_cell` needs the cursor reset to the
@@ -88,15 +87,13 @@ Out of scope for now (confirmed with the user, not forgotten): the MQTT bridge t
       treats all failures the same
 - [x] `build_free_analyzer()` — the default $0 chain: OpenRouter's free-tagged models, then
       Gemini's free tier. `get_default_analyzer()` reads `$ANALYZER_PROVIDER` ("free" by default,
-      "claude" to opt into paying) and both `cli.py` and `web/app.py` use it instead of hardcoding
-      Claude
-- [x] CLI (`analyze`/`report`) now fails with a clear one-line message instead of a raw Python
-      traceback when every provider fails — a real bug caught by actually running the command
-      with no API keys configured, not something noticed by reading the code
+      "claude" to opt into paying) and `web/app.py` uses it instead of hardcoding Claude
+- [x] The web app's Report/Analysis routes surface a clear message (not a raw error) when every
+      provider fails — a real bug caught by actually running with no API keys configured
 - [x] 26 tests for `analyzer.py` (up from 9), all passing against mocked HTTP responses. **Not
       verified against a real live API call for any of the four providers** — no real API keys
       available in this environment. Set `OPENROUTER_API_KEY`/`GEMINI_API_KEY`/`ANTHROPIC_API_KEY`
-      and run `soliloquy analyze` yourself to confirm the live path for whichever provider(s) you use
+      and generate a report yourself to confirm the live path for whichever provider(s) you use
 
 ## Extra: automatic background analysis ✅ done
 
@@ -117,19 +114,46 @@ Out of scope for now (confirmed with the user, not forgotten): the MQTT bridge t
       Revisit once real usage shows what cadence actually makes sense -- the interval/window are
       both just env vars, no code change needed to retune them later
 
+## Extra: CLI removed, web-only ✅ done
+
+- [x] Shared logic (`add_entry`, `list_entries`, `analyze_range`, `report_range`, `AUDIENCES`,
+      `DEFAULT_DATABASE_URL`) moved out of `cli.py` into `src/soliloquy/actions.py` — the web
+      app's routes, the scheduled analysis job, and the MQTT listener all call these same
+      functions, so nothing lost logic by losing the CLI wrapper around it
+- [x] Deleted `cli.py` (the argparse interface) and `recorder.py` + its tests (only the CLI's
+      `record` command ever used local mic recording via `pyaudio` — the web app records
+      client-side, via the browser's own file/camera picker, so this was dead code once the CLI
+      was gone)
+- [x] `pyproject.toml`: removed the `soliloquy` console script and the `audio` extra (`pyaudio`)
+- [x] Tests migrated: `test_cli.py` → `test_actions.py` (pure-function tests kept; the
+      argparse-`main()`-specific tests were dropped since the same behavior — share, report
+      formats, clean failure messages — is already covered by `test_web.py`'s route tests, so no
+      coverage was lost)
+- [x] Verified: full suite green (109 tests), and the web server starts clean with `python -m
+      soliloquy.web` — no leftover imports from the deleted `cli.py`
+
+## In progress: MQTT bridge to makeItSoNumberOne
+
+- [ ] Soliloquy side: `mqtt_bridge.py` (subscriber) + Mosquitto broker in `docker-compose.yml`
+- [ ] `landonkea-makeItSoNumberOne` side: `journal_entry` plugin (publisher), following that
+      repo's own documented third-party-plugin pattern
+- [ ] Real end-to-end verification: publish a real MQTT message, confirm a real entry appears
+
 ## Right after this
 
 - [ ] Test the video-capture flow from a real phone (not just desktop browser + synthesized test
       video) — this is the one part of the original ask ("record with the phone's camera app,
       then hand the file to Soliloquy") not yet verified on an actual phone
-- [ ] Set a real `ANTHROPIC_API_KEY` to verify the report page's happy path end-to-end (currently
-      only the error path is verified in this environment)
+- [ ] Set a real `ANTHROPIC_API_KEY`/`OPENROUTER_API_KEY`/`GEMINI_API_KEY` to verify the
+      Report/Analysis happy path end-to-end (currently only the error path is verified here)
+- [ ] More upload formats (`.m4a`, `.mkv`, etc.) — verify `ffmpeg`/`faster-whisper` genuinely
+      handle them (they should, both detect format from file contents, not extension) and expand
+      the `/media/{key}` content-type map for correct browser playback
 
 ## After that (not started, no immediate plan)
 
 - [ ] Move from self-hosted Postgres/MinIO to managed cloud (Supabase/Neon + Cloudflare R2) once
       the self-hosted version has been used for real for a while — same interfaces, config change
-- [ ] MQTT bridge to `makeItSoNumberOne` (voice-triggered journal entries)
 - [ ] Face/expression analysis of stored video (a genuinely new analyzer, not a re-use of the
       transcript pipeline)
 - [ ] Native mobile app(s), once the web app has proven the product is worth the extra platform

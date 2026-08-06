@@ -29,7 +29,7 @@ from fastapi.templating import Jinja2Templates
 
 from ..analysis_store import AnalysisSnapshotStore
 from ..analyzer import NoEntriesError, get_default_analyzer
-from ..cli import AUDIENCES, DEFAULT_DATABASE_URL, add_entry, list_entries, report_range
+from ..actions import AUDIENCES, DEFAULT_DATABASE_URL, add_entry, list_entries, report_range
 from ..entry import Entry
 from ..object_storage import ObjectStore
 from ..report import FORMATS, build_report_content, format_html, format_markdown, format_pdf, format_text

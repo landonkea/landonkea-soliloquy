@@ -248,6 +248,58 @@ def test_post_video_entry_stores_video_and_audio_and_transcribes(client, tmp_pat
     assert client.get(f"/media/{body['audio_path']}").status_code == 200
 
 
+def _synthesize_test_m4a(path: str, duration: float = 1.0) -> None:
+    subprocess.run(
+        ["ffmpeg", "-y", "-f", "lavfi", "-i", f"sine=frequency=440:duration={duration}", "-c:a", "aac", path],
+        check=True, capture_output=True,
+    )
+
+
+def test_post_audio_entry_accepts_a_real_m4a_file(client, tmp_path):
+    # Not a hardcoded special case anywhere in the pipeline -- ffmpeg/
+    # faster-whisper detect format from file contents, not extension.
+    # This proves it with a real file rather than assuming it.
+    m4a_path = tmp_path / "entry.m4a"
+    _synthesize_test_m4a(str(m4a_path))
+    fake_module = _install_fake_faster_whisper([" from an m4a file "])
+
+    with patch.dict(sys.modules, {"faster_whisper": fake_module}):
+        with open(m4a_path, "rb") as f:
+            response = client.post(
+                "/entries/audio", files={"file": ("entry.m4a", f.read(), "audio/mp4")}
+            )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["audio_path"].endswith(".m4a")
+    assert body["transcript"] == "from an m4a file"
+
+    media_response = client.get(f"/media/{body['audio_path']}")
+    assert media_response.status_code == 200
+    assert media_response.headers["content-type"] == "audio/mp4"
+
+
+def test_post_video_entry_accepts_a_real_mkv_file(client, tmp_path):
+    mkv_path = tmp_path / "entry.mkv"
+    _synthesize_test_video(str(mkv_path))
+    fake_module = _install_fake_faster_whisper([" from an mkv file "])
+
+    with patch.dict(sys.modules, {"faster_whisper": fake_module}):
+        with open(mkv_path, "rb") as f:
+            response = client.post(
+                "/entries/video", files={"file": ("entry.mkv", f.read(), "video/x-matroska")}
+            )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["video_path"].endswith(".mkv")
+    assert body["transcript"] == "from an mkv file"
+
+    media_response = client.get(f"/media/{body['video_path']}")
+    assert media_response.status_code == 200
+    assert media_response.headers["content-type"] == "video/x-matroska"
+
+
 # ── HTML pages ───────────────────────────────────────────────────────
 
 def test_entries_page_lists_entries_newest_first(client):

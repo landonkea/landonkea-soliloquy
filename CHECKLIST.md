@@ -132,18 +132,28 @@ Out of scope for now (confirmed with the user, not forgotten): the MQTT bridge t
 - [x] Verified: full suite green (109 tests), and the web server starts clean with `python -m
       soliloquy.web` — no leftover imports from the deleted `cli.py`
 
-## In progress: MQTT bridge to makeItSoNumberOne
+## MQTT bridge to makeItSoNumberOne ✅ done
 
 - [x] Soliloquy side: `mqtt_bridge.py` (`handle_message()` directly testable, `start_mqtt_listener()`
       wired into the web app's lifespan) + Mosquitto broker in `docker-compose.yml`
-      (anonymous-auth, local-only, mirrors the Postgres/MinIO posture)
-- [x] Real end-to-end verification: brought up the real Mosquitto container, published a real
-      `{"text": "..."}` message with `paho-mqtt`, confirmed a real entry appeared via the API AND
-      rendered on the Entries page in a real browser
-- [x] 5 tests for `handle_message()` (malformed JSON, missing/empty text, non-dict payload, real
-      success path) against real Postgres, no broker needed for those
-- [ ] `landonkea-makeItSoNumberOne` side: `journal_entry` plugin (publisher), following that
-      repo's own documented third-party-plugin pattern -- not started yet
+      (anonymous-auth, local-only, mirrors the Postgres/MinIO posture). 5 tests for
+      `handle_message()` against real Postgres, no broker needed for those.
+- [x] `landonkea-makeItSoNumberOne` side: `desktop/plugins/examples/journal_entry_plugin.py`
+      (publisher), following that repo's own documented third-party-plugin pattern exactly.
+      `CONFIG_SCHEMA` gained an `integrations.journal` block; `core/ai.py` documents the new
+      `journal_entry` action so Claude actually emits it for "Computer, journal entry: ...".
+      Activated by copying into `desktop/plugins/` (gitignored there, matching every other
+      active third-party plugin).
+- [x] Real end-to-end verification, both directions: confirmed the plugin loads through the real
+      `discover_plugins()` mechanism, ran makeItSoNumberOne's full test suite (194 tests, all
+      still passing), and did a genuine cross-repo round trip — called the plugin's `execute()`
+      against a real running Mosquitto broker and a real running Soliloquy server, confirmed the
+      entry actually landed in Soliloquy's database and rendered on the Entries page.
+- **Known gap**: `paho-mqtt` isn't installed in makeItSoNumberOne's own venv by default (it's
+  commented out in `requirements.txt`, like `pyautogui`, since it's optional) — verification used
+  Soliloquy's venv as a stand-in Python environment (the plugin has no makeItSoNumberOne-specific
+  imports beyond a local relative import and the generic `paho-mqtt` package). To actually use
+  this for real, `pip install paho-mqtt` in whichever environment runs `make_it_so.py`.
 
 ## Right after this
 
@@ -152,9 +162,13 @@ Out of scope for now (confirmed with the user, not forgotten): the MQTT bridge t
       then hand the file to Soliloquy") not yet verified on an actual phone
 - [ ] Set a real `ANTHROPIC_API_KEY`/`OPENROUTER_API_KEY`/`GEMINI_API_KEY` to verify the
       Report/Analysis happy path end-to-end (currently only the error path is verified here)
-- [ ] More upload formats (`.m4a`, `.mkv`, etc.) — verify `ffmpeg`/`faster-whisper` genuinely
-      handle them (they should, both detect format from file contents, not extension) and expand
-      the `/media/{key}` content-type map for correct browser playback
+- [x] More upload formats (`.m4a`, `.mkv`, etc.) — verified with real ffmpeg-synthesized files
+      (not assumed): `ffmpeg`'s audio extraction handles a real `.mkv` with zero code changes, and
+      `faster-whisper` transcribes a real `.m4a` directly, both because they detect format from
+      file contents, not extension. The one real fix: expanded `/media/{key}`'s content-type map
+      (`.m4a`, `.ogg`, `.flac`, `.aac`, `.mkv`, `.avi`) for correct browser playback headers.
+      Some containers (`.mkv` especially) still won't play back in most browsers regardless of a
+      correct header — a browser codec-support limitation, not something fixable here.
 
 ## After that (not started, no immediate plan)
 

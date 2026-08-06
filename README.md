@@ -60,6 +60,13 @@ fact — the recording is the whole interaction.
   the same pipeline as an audio entry, unchanged. Both the video and its extracted audio are kept
   in object storage. Verified against a real ffmpeg-synthesized test video; not yet verified from
   an actual phone recording.
+- **Upload format support**: not hardcoded to specific extensions — `ffmpeg` and
+  `faster-whisper`'s PyAV-based decoding both detect format from file contents, not extension, so
+  `.m4a`, `.mkv`, and most other common audio/video containers already work with zero special
+  handling. Verified directly with real ffmpeg-synthesized `.m4a`/`.mkv` files, not assumed. The
+  `/media/{key}` route's content-type map covers the common ones for correct browser playback
+  headers (some containers, `.mkv` especially, still won't play back in most browsers regardless
+  — a browser codec-support limitation, not something fixable from this side).
 - **Analysis** — turns a date range of entries into a real summary, mood notes, and key topics,
   asked explicitly to be honest rather than generically positive. Four `Analyzer` implementations
   (`src/soliloquy/analyzer.py`): `ClaudeAnalyzer`, `OpenRouterAnalyzer`, `GeminiAnalyzer`, and

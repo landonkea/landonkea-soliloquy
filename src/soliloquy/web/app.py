@@ -249,9 +249,22 @@ def get_media(key: str, object_store: ObjectStore = Depends(get_object_store)):
     except Exception:
         raise HTTPException(status_code=404, detail=f"No media found for key {key!r}")
 
+    # Upload/transcription/extraction itself is format-agnostic --
+    # ffmpeg and faster-whisper's PyAV-based decoding both detect the
+    # actual container/codec from file contents, not the extension
+    # (verified directly: a real .m4a transcribes and a real .mkv's
+    # audio extracts with zero code changes). This map only controls
+    # the Content-Type header for browser playback -- an unlisted
+    # extension still uploads/transcribes/extracts fine, it just falls
+    # back to a generic type here. Some containers (.mkv especially)
+    # won't play back in most browsers regardless of a correct
+    # Content-Type -- that's a browser codec-support limitation, not
+    # something fixable from this side.
     media_type = {
-        ".wav": "audio/wav", ".mp3": "audio/mpeg",
+        ".wav": "audio/wav", ".mp3": "audio/mpeg", ".m4a": "audio/mp4",
+        ".ogg": "audio/ogg", ".flac": "audio/flac", ".aac": "audio/aac",
         ".mp4": "video/mp4", ".mov": "video/quicktime", ".webm": "video/webm",
+        ".mkv": "video/x-matroska", ".avi": "video/x-msvideo",
     }.get(local_path.suffix, "application/octet-stream")
 
     def stream():

@@ -16,6 +16,7 @@
 
 from __future__ import annotations
 
+import logging
 import os
 import tempfile
 import uuid
@@ -40,6 +41,8 @@ from ..scheduler import start_scheduler
 from ..storage import EntryStore
 from ..transcriber import WhisperTranscriber
 from ..video import extract_audio
+
+logger = logging.getLogger(__name__)
 
 
 @asynccontextmanager
@@ -203,6 +206,33 @@ def share_entry(
     if not updated:
         raise HTTPException(status_code=404, detail=f"No entry found with id {entry_id}")
     return _entry_to_dict(store.get(entry_id))
+
+
+@app.delete("/entries/{entry_id}")
+def delete_entry(
+    entry_id: str,
+    store: EntryStore = Depends(get_store),
+    object_store: ObjectStore = Depends(get_object_store),
+):
+    entry = store.get(entry_id)
+    if entry is None:
+        raise HTTPException(status_code=404, detail=f"No entry found with id {entry_id}")
+
+    # Delete the DB row first -- if object storage cleanup fails
+    # partway through, an orphaned file in MinIO is a much smaller
+    # problem than an entry that still shows up but whose media
+    # deletion silently failed.
+    store.delete(entry_id)
+    for key in (entry.audio_path, entry.video_path):
+        if key:
+            try:
+                object_store.delete(key)
+            except Exception as exc:
+                # Best-effort -- the entry itself is already gone; an
+                # orphaned object in MinIO is a real but minor cleanup
+                # gap, not worth failing the whole delete over.
+                logger.warning("Could not delete object storage key %s for entry %s: %s", key, entry_id, exc)
+    return {"ok": True}
 
 
 _REPORT_RENDERERS = {"text": format_text, "markdown": format_markdown, "html": format_html, "pdf": format_pdf}

@@ -107,6 +107,36 @@ def test_share_entry_returns_404_for_an_unknown_id(client):
     assert response.status_code == 404
 
 
+def test_delete_entry_removes_it_from_the_database(client):
+    created = client.post("/entries", data={"text": "entry to delete"}).json()
+
+    response = client.delete(f"/entries/{created['id']}")
+
+    assert response.status_code == 200
+    with EntryStore(TEST_DATABASE_URL) as store:
+        assert store.get(created["id"]) is None
+
+
+def test_delete_entry_returns_404_for_an_unknown_id(client):
+    response = client.delete("/entries/does-not-exist")
+    assert response.status_code == 404
+
+
+def test_delete_entry_also_deletes_its_audio_from_object_storage(client):
+    fake_module = _install_fake_faster_whisper([" to be deleted "])
+    with patch.dict(sys.modules, {"faster_whisper": fake_module}):
+        created = client.post(
+            "/entries/audio", files={"file": ("entry.wav", _silent_wav_bytes(), "audio/wav")}
+        ).json()
+    audio_key = created["audio_path"]
+    assert client.get(f"/media/{audio_key}").status_code == 200  # really there beforehand
+
+    response = client.delete(f"/entries/{created['id']}")
+
+    assert response.status_code == 200
+    assert client.get(f"/media/{audio_key}").status_code == 404  # really gone afterward
+
+
 def test_report_returns_404_when_nothing_matches_the_audience(client):
     client.post("/entries", data={"text": "a private entry, never shared"})
 

@@ -8,7 +8,16 @@
     <div class="prompt-text">{{ prompt }}</div>
   </div>
 
-  <fieldset>
+  <div class="card">
+    <label for="entry-type">Entry type</label>
+    <select id="entry-type">
+      <option value="text">Text</option>
+      <option value="audio">Audio</option>
+      <option value="video">Video</option>
+    </select>
+  </div>
+
+  <fieldset id="section-text">
     <legend>Typed entry</legend>
     <form id="text-form">
       <textarea name="text" rows="4" placeholder="What's on your mind?" required></textarea>
@@ -17,55 +26,89 @@
     </form>
   </fieldset>
 
-  <fieldset>
+  <fieldset id="section-audio" style="display: none;">
     <legend>Audio entry</legend>
-    <p>Upload an existing recording, or use your device's own voice memo app and select the file
-       here.</p>
-    <form id="audio-form">
-      <input type="file" name="file" accept="audio/*" required>
-      <button type="submit">Upload &amp; transcribe</button>
-      <div class="status" id="audio-status"></div>
-    </form>
+    <div class="capture-choice">
+      <div>
+        <label for="audio-upload-input">Upload from device</label>
+        <input type="file" id="audio-upload-input" name="file" accept="audio/*">
+        <button type="button" class="secondary" onclick="document.getElementById('audio-upload-input').click()">Choose existing file</button>
+      </div>
+      <div>
+        <label for="audio-capture-input">Record now</label>
+        <input type="file" id="audio-capture-input" name="file" accept="audio/*" capture>
+        <button type="button" onclick="document.getElementById('audio-capture-input').click()">Record new audio</button>
+      </div>
+    </div>
+    <div class="status" id="audio-status"></div>
   </fieldset>
 
-  <fieldset>
+  <fieldset id="section-video" style="display: none;">
     <legend>Video entry</legend>
-    <p>On a phone, this opens your native camera app directly. The audio track is extracted and
-       transcribed automatically; the video is kept too.</p>
-    <form id="video-form">
-      <input type="file" name="file" accept="video/*" capture="user" required>
-      <button type="submit">Upload &amp; transcribe</button>
-      <div class="status" id="video-status"></div>
-    </form>
+    <div class="capture-choice">
+      <div>
+        <label for="video-upload-input">Upload from device</label>
+        <input type="file" id="video-upload-input" name="file" accept="video/*">
+        <button type="button" class="secondary" onclick="document.getElementById('video-upload-input').click()">Choose existing file</button>
+      </div>
+      <div>
+        <label for="video-capture-input">Record now</label>
+        <input type="file" id="video-capture-input" name="file" accept="video/*" capture="user">
+        <button type="button" onclick="document.getElementById('video-capture-input').click()">Open camera &amp; record</button>
+      </div>
+    </div>
+    <div class="status" id="video-status"></div>
   </fieldset>
 
   <script>
-    function wireForm(formId, statusId, url, isFile) {
-      const form = document.getElementById(formId);
-      const statusEl = document.getElementById(statusId);
-      form.addEventListener("submit", async (event) => {
-        event.preventDefault();
-        statusEl.textContent = "Uploading...";
-        statusEl.className = "status";
-        const body = new FormData(form);
-        try {
-          const response = await fetch(url, { method: "POST", body });
-          if (!response.ok) {
-            const detail = await response.json().catch(() => ({}));
-            throw new Error(detail.detail || `Request failed (${response.status})`);
-          }
-          statusEl.textContent = "Saved. Redirecting...";
-          statusEl.className = "status ok";
-          window.location.href = "/";
-        } catch (err) {
-          statusEl.textContent = err.message;
-          statusEl.className = "status error";
+    // ── Entry type selector: shows/hides the relevant section. ──────
+    const typeSelect = document.getElementById("entry-type");
+    const sections = { text: "section-text", audio: "section-audio", video: "section-video" };
+    typeSelect.addEventListener("change", () => {
+      for (const [type, id] of Object.entries(sections)) {
+        document.getElementById(id).style.display = type === typeSelect.value ? "block" : "none";
+      }
+    });
+
+    // ── Shared upload/save logic ──────────────────────────────────
+    async function submitEntry(url, body, statusEl) {
+      statusEl.textContent = "Uploading...";
+      statusEl.className = "status";
+      try {
+        const response = await fetch(url, { method: "POST", body });
+        if (!response.ok) {
+          const detail = await response.json().catch(() => ({}));
+          throw new Error(detail.detail || `Request failed (${response.status})`);
         }
+        statusEl.textContent = "Saved. Redirecting...";
+        statusEl.className = "status ok";
+        window.location.href = "/";
+      } catch (err) {
+        statusEl.textContent = err.message;
+        statusEl.className = "status error";
+      }
+    }
+
+    document.getElementById("text-form").addEventListener("submit", (event) => {
+      event.preventDefault();
+      const body = new FormData(event.target);
+      submitEntry("/entries", body, document.getElementById("text-status"));
+    });
+
+    function wireFileInput(inputId, url, statusId) {
+      const input = document.getElementById(inputId);
+      const statusEl = document.getElementById(statusId);
+      input.addEventListener("change", () => {
+        if (!input.files.length) return;
+        const body = new FormData();
+        body.set("file", input.files[0]);
+        submitEntry(url, body, statusEl);
       });
     }
 
-    wireForm("text-form", "text-status", "/entries");
-    wireForm("audio-form", "audio-status", "/entries/audio");
-    wireForm("video-form", "video-status", "/entries/video");
+    wireFileInput("audio-upload-input", "/entries/audio", "audio-status");
+    wireFileInput("audio-capture-input", "/entries/audio", "audio-status");
+    wireFileInput("video-upload-input", "/entries/video", "video-status");
+    wireFileInput("video-capture-input", "/entries/video", "video-status");
   </script>
 {% endblock %}

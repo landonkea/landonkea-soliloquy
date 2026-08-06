@@ -4,7 +4,7 @@
   <h1>Entries</h1>
 
   {% if not entries %}
-    <p>No entries yet. <a href="/new">Add one.</a></p>
+    <p class="empty-state">No entries yet. <a href="/new">Add one.</a></p>
   {% endif %}
 
   {% for entry in entries %}
@@ -23,6 +23,7 @@
         <label><input type="checkbox" {% if entry.shareable_with_provider %}checked{% endif %}
                onchange="setShare('{{ entry.id }}', 'provider', this.checked)"> shared with provider</label>
       </div>
+      <button type="button" class="secondary" style="margin-top: 0.75rem;" onclick="deleteEntry('{{ entry.id }}')">Delete</button>
       <div class="status" id="status-{{ entry.id }}"></div>
     </div>
   {% endfor %}
@@ -38,6 +39,18 @@
         statusEl.className = "status ok";
       } else {
         statusEl.textContent = "Could not save -- try again.";
+        statusEl.className = "status error";
+      }
+    }
+
+    async function deleteEntry(entryId) {
+      if (!confirm("Delete this entry permanently? This can't be undone.")) return;
+      const response = await fetch(`/entries/${entryId}`, { method: "DELETE" });
+      if (response.ok) {
+        document.getElementById(`entry-${entryId}`).remove();
+      } else {
+        const statusEl = document.getElementById(`status-${entryId}`);
+        statusEl.textContent = "Could not delete -- try again.";
         statusEl.className = "status error";
       }
     }

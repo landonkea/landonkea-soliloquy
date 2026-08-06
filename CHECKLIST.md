@@ -194,6 +194,24 @@ and the unrelated CRM/CMS + PWA project.
       removed entirely to simulate a genuine first-ever run — both times ended with a real HTTP
       200 from the running server, and the printed LAN address was confirmed reachable too.
 
+## Extra: visual redesign + upload/capture choice + delete ✅ done
+
+- [x] Real design system in `base.html` (warm color palette, cards with shadows, better
+      typography/spacing/buttons) instead of bare default styling. Header restructured to two
+      rows (brand name, then nav below it) per explicit request.
+- [x] New Entry page redesigned: a type selector (Text/Audio/Video) shown first, prompt still
+      above it. Audio/Video sections each offer two explicit choices — "Upload from device" (no
+      `capture` attribute, opens the normal file/photo picker) vs "Record now" (has `capture`,
+      opens the camera/mic directly) — fixing the earlier behavior where video always jumped
+      straight to the camera with no upload option.
+- [x] Share checkboxes on the Entries page: stacked vertically, left-aligned (was side-by-side).
+- [x] `DELETE /entries/{id}` route (didn't exist before) — deletes the DB row and best-effort
+      cleans up its audio/video objects in MinIO too, not just the row. Delete button added to
+      each entry card with a confirm() prompt before it runs. 3 new tests.
+- [x] Verified live end-to-end, including catching and correctly diagnosing an apparent delete
+      failure that turned out to be concurrent testing (the user testing live on their own device
+      at the same time as this session) rather than a real bug — confirmed via server logs.
+
 ## Right after this
 
 - [ ] Test the video-capture flow from a real phone (not just desktop browser + synthesized test

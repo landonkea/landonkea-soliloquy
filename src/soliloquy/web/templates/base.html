@@ -5,32 +5,202 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>{% block title %}Soliloquy{% endblock %}</title>
   <style>
-    body { font-family: -apple-system, system-ui, sans-serif; max-width: 720px; margin: 2rem auto; padding: 0 1rem; color: #222; }
-    nav { display: flex; gap: 1rem; margin-bottom: 2rem; border-bottom: 1px solid #ddd; padding-bottom: 1rem; }
-    nav a { text-decoration: none; color: #2b5aa0; font-weight: 600; }
-    .entry { border: 1px solid #ddd; border-radius: 8px; padding: 1rem; margin-bottom: 1rem; }
-    .entry-meta { color: #777; font-size: 0.85rem; margin-bottom: 0.5rem; }
-    .entry audio, .entry video { max-width: 100%; display: block; margin: 0.5rem 0; }
-    .share-flags label { margin-right: 1rem; font-size: 0.9rem; }
-    fieldset { border: 1px solid #ddd; border-radius: 8px; margin-bottom: 1.5rem; }
-    textarea, input[type=text], input[type=number], select { width: 100%; box-sizing: border-box; padding: 0.5rem; margin-top: 0.25rem; }
-    button { padding: 0.5rem 1rem; cursor: pointer; }
-    .status { margin-top: 0.5rem; font-size: 0.9rem; }
-    .status.ok { color: #1a7f37; }
-    .status.error { color: #c0392b; }
-    pre.report { white-space: pre-wrap; background: #f6f6f6; padding: 1rem; border-radius: 8px; }
-    .prompt-box { background: #f0f4fa; border: 1px solid #cddcf0; border-radius: 8px; padding: 1rem; margin-bottom: 1.5rem; }
-    .prompt-label { font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.05em; color: #5c7aa8; margin-bottom: 0.25rem; }
-    .prompt-text { font-size: 1.05rem; font-style: italic; }
+    :root {
+      --bg: #faf7f2;
+      --surface: #ffffff;
+      --border: #e8e0d4;
+      --text: #2e2a24;
+      --text-muted: #8a8071;
+      --accent: #c1694f;
+      --accent-hover: #a8563f;
+      --accent-soft: #f3e6df;
+      --accent-soft-border: #e6c9ba;
+      --ok: #3f7d4f;
+      --error: #b0483a;
+      --radius: 14px;
+      --shadow: 0 1px 2px rgba(46, 42, 36, 0.04), 0 4px 16px rgba(46, 42, 36, 0.06);
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      max-width: 720px;
+      margin: 0 auto;
+      padding: 1.5rem 1.25rem 4rem;
+      line-height: 1.55;
+      font-size: 16px;
+    }
+
+    h1 {
+      font-size: 1.6rem;
+      font-weight: 700;
+      letter-spacing: -0.01em;
+      margin: 0.25rem 0 1.25rem;
+    }
+
+    header {
+      margin-bottom: 1.5rem;
+      padding-bottom: 1rem;
+      border-bottom: 1px solid var(--border);
+    }
+
+    .brand-name {
+      display: block;
+      font-size: 1.35rem;
+      font-weight: 700;
+      color: var(--text);
+      text-decoration: none;
+      letter-spacing: -0.01em;
+      margin-bottom: 0.6rem;
+    }
+
+    nav { display: flex; gap: 1.25rem; }
+    nav a {
+      text-decoration: none;
+      color: var(--text-muted);
+      font-weight: 600;
+      font-size: 0.92rem;
+      padding: 0.3rem 0;
+      border-bottom: 2px solid transparent;
+      transition: color 0.15s ease, border-color 0.15s ease;
+    }
+    nav a:hover { color: var(--accent); }
+    nav a.active { color: var(--accent); border-bottom-color: var(--accent); }
+
+    .entry, fieldset, .card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      box-shadow: var(--shadow);
+      padding: 1.25rem;
+      margin-bottom: 1.25rem;
+    }
+
+    fieldset { padding-top: 0.5rem; }
+    legend {
+      font-weight: 700;
+      font-size: 0.95rem;
+      padding: 0 0.4rem;
+      color: var(--text);
+    }
+
+    .entry-meta { color: var(--text-muted); font-size: 0.82rem; margin-bottom: 0.6rem; }
+    .entry p { margin: 0 0 0.75rem; }
+    .entry audio, .entry video {
+      max-width: 100%;
+      display: block;
+      margin: 0.6rem 0;
+      border-radius: 10px;
+    }
+
+    .share-flags {
+      display: flex;
+      flex-direction: column;
+      align-items: flex-start;
+      gap: 0.5rem;
+      margin-top: 0.75rem;
+    }
+    .share-flags label {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      font-size: 0.9rem;
+      cursor: pointer;
+    }
+    .share-flags input[type="checkbox"] { width: 1.05rem; height: 1.05rem; accent-color: var(--accent); }
+
+    label { font-weight: 600; font-size: 0.9rem; display: block; margin-bottom: 1rem; }
+
+    textarea, input[type=text], input[type=number], input[type=file], select {
+      width: 100%;
+      box-sizing: border-box;
+      padding: 0.6rem 0.7rem;
+      margin-top: 0.35rem;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      background: var(--bg);
+      font-size: 0.95rem;
+      font-family: inherit;
+      color: var(--text);
+    }
+    textarea:focus, input:focus, select:focus {
+      outline: none;
+      border-color: var(--accent);
+      background: var(--surface);
+    }
+
+    button, .btn {
+      padding: 0.6rem 1.1rem;
+      cursor: pointer;
+      border: none;
+      border-radius: 8px;
+      background: var(--accent);
+      color: white;
+      font-weight: 600;
+      font-size: 0.9rem;
+      font-family: inherit;
+      transition: background 0.15s ease;
+    }
+    button:hover, .btn:hover { background: var(--accent-hover); }
+    button.secondary, .btn.secondary {
+      background: var(--surface);
+      color: var(--text);
+      border: 1px solid var(--border);
+    }
+    button.secondary:hover, .btn.secondary:hover { background: var(--accent-soft); border-color: var(--accent-soft-border); }
+
+    .status { margin-top: 0.6rem; font-size: 0.87rem; font-weight: 600; }
+    .status.ok { color: var(--ok); }
+    .status.error { color: var(--error); }
+
+    pre.report {
+      white-space: pre-wrap;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      padding: 1.1rem;
+      border-radius: var(--radius);
+    }
+
+    .prompt-box {
+      background: var(--accent-soft);
+      border: 1px solid var(--accent-soft-border);
+      border-radius: var(--radius);
+      padding: 1.1rem 1.25rem;
+      margin-bottom: 1.5rem;
+    }
+    .prompt-label {
+      font-size: 0.72rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      color: var(--accent-hover);
+      margin-bottom: 0.3rem;
+    }
+    .prompt-text { font-size: 1.1rem; font-style: italic; color: var(--text); }
+
+    .capture-choice { display: flex; gap: 0.6rem; margin-top: 0.5rem; }
+    .capture-choice > div { flex: 1; }
+    .capture-choice label { font-size: 0.78rem; color: var(--text-muted); margin-bottom: 0.35rem; }
+    .capture-choice input[type=file] { display: none; }
+    .capture-choice button { width: 100%; }
+
+    .empty-state { color: var(--text-muted); }
+    .empty-state a { color: var(--accent); }
   </style>
 </head>
 <body>
-  <nav>
-    <a href="/">Entries</a>
-    <a href="/new">New entry</a>
-    <a href="/report">Report</a>
-    <a href="/analysis">Analysis</a>
-  </nav>
+  <header>
+    <a href="/" class="brand-name">Soliloquy</a>
+    <nav>
+      <a href="/">Entries</a>
+      <a href="/new">New entry</a>
+      <a href="/report">Report</a>
+      <a href="/analysis">Analysis</a>
+    </nav>
+  </header>
   {% block content %}{% endblock %}
 </body>
 </html>

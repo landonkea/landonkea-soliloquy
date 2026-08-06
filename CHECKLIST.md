@@ -184,6 +184,16 @@ and the unrelated CRM/CMS + PWA project.
 - [x] 8 tests (`prompts.py`) + 1 web test confirming the page actually renders today's prompt.
       Verified visually in a real browser.
 
+## Extra: one-click startup ✅ done
+
+- [x] `start.command` — double-click in Finder (or `./start.command`) to run everything: checks
+      Docker is running, installs `ffmpeg` via Homebrew if missing, `docker compose up -d`,
+      creates/updates the Python venv, waits for Postgres to be ready, then starts the web app.
+      Safe to run repeatedly — every step is a no-op if already done.
+- [x] Verified for real, twice: once with an existing `.venv` (fast path), once with `.venv`
+      removed entirely to simulate a genuine first-ever run — both times ended with a real HTTP
+      200 from the running server, and the printed LAN address was confirmed reachable too.
+
 ## Right after this
 
 - [ ] Test the video-capture flow from a real phone (not just desktop browser + synthesized test

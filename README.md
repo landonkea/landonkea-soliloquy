@@ -124,8 +124,18 @@ fact — the recording is the whole interaction.
 
 ## Quick start
 
+**Easiest way (macOS): double-click `start.command`** in Finder (or run `./start.command` from a
+terminal). It handles everything — starting Docker services, creating the Python environment,
+installing dependencies, installing `ffmpeg` if missing, and starting the web app — and is safe
+to run again any time (each step is a no-op if already done). Leave the window it opens open
+while you're using the app; closing it (or Ctrl+C) stops the server. It prints both the
+`localhost` address and this machine's LAN address (for using it from your phone).
+
+Manual equivalent, if you'd rather run it yourself:
+
 ```bash
 docker compose up -d       # local Postgres (port 5433), MinIO (port 9000), Mosquitto (port 1883)
+python3 -m venv .venv && source .venv/bin/activate
 pip install -e ".[dev,web,transcribe]"
 # macOS also needs: brew install ffmpeg   (used to extract audio from uploaded video)
 

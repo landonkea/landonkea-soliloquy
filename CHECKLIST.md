@@ -244,6 +244,21 @@ and the unrelated CRM/CMS + PWA project.
   resolve `soliloquy.internal` — requires the device's own settings, not something scriptable
   from here. Router-level DHCP config (to make this automatic for every device on the LAN) would
   need router admin access, which wasn't available in this session.
+- **Real bug found and fixed**: `soliloquy.internal` didn't work even on this Mac at first,
+  because this Mac's own network DNS was still pointed at the router, not at dnsmasq. Fixed with
+  `networksetup -setdnsservers Wi-Fi 127.0.0.1`. That fix immediately broke normal internet
+  browsing, though — macOS auto-rewrote `/etc/resolv.conf` to `nameserver 127.0.0.1` once the Mac's
+  DNS pointed there, and dnsmasq's default behavior is to read that same file for where to
+  forward everything else, creating a self-referential loop (dnsmasq asking itself, forever;
+  confirmed via `dig` returning `REFUSED`). Fixed with `no-resolv` + explicit `server=1.1.1.1` /
+  `server=8.8.8.8` lines in `dnsmasq.conf`, bypassing `/etc/resolv.conf` entirely. Verified both
+  directions afterward: `soliloquy.internal` resolves AND real domains (`google.com`) still
+  resolve, confirmed in a real browser too.
+- **Note on `sudo`**: dnsmasq needs root to bind port 53 (a privileged port) and to run as a
+  system-wide LaunchDaemon that starts at boot — not avoidable for a real local DNS server. The
+  automatic 5-minute IP-update script normally restarts it without a password prompt (it's just
+  signaling the already-loaded daemon); a full config change like this fix needed one manual
+  `sudo brew services restart dnsmasq` to take effect.
 
 ## Right after this
 

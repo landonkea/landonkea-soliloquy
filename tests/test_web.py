@@ -379,6 +379,29 @@ def test_analysis_page_loads_and_shows_a_message_when_empty(client):
     assert "No automatic analysis yet" in response.text
 
 
+def test_analysis_page_shows_not_set_for_unconfigured_keys(client, monkeypatch):
+    monkeypatch.delenv("OPENROUTER_API_KEY", raising=False)
+    monkeypatch.delenv("GEMINI_API_KEY", raising=False)
+    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+
+    response = client.get("/analysis")
+
+    assert response.status_code == 200
+    assert response.text.count('placeholder="Not set"') == 3
+    assert "OPENROUTER_API_KEY" in response.text
+    assert "GEMINI_API_KEY" in response.text
+
+
+def test_analysis_page_masks_a_configured_key_without_exposing_it(client, monkeypatch):
+    monkeypatch.setenv("OPENROUTER_API_KEY", "sk-or-supersecretvalue12345")
+
+    response = client.get("/analysis")
+
+    assert "sk-or-supersecretvalue12345" not in response.text
+    assert "sk-o" in response.text  # first 4 chars shown
+    assert "2345" in response.text  # last 4 chars shown
+
+
 def test_analysis_page_shows_saved_snapshots(client):
     from soliloquy.analysis_store import AnalysisSnapshot
     from soliloquy.analyzer import AnalysisResult

@@ -73,6 +73,26 @@ app = FastAPI(title="Soliloquy", lifespan=_lifespan)
 templates = Jinja2Templates(directory=str(Path(__file__).parent / "templates"))
 
 
+def _masked_key(value: str) -> str:
+    # Shows just enough to confirm "yes, something is set" without ever
+    # putting the real secret in rendered HTML -- these are read-only
+    # status indicators, not an editable form (keys are only ever set
+    # via the environment/.env, never stored in the database).
+    if not value:
+        return ""
+    if len(value) <= 8:
+        return "*" * len(value)
+    return f"{value[:4]}{'*' * 8}{value[-4:]}"
+
+
+def _analyzer_key_status() -> list[dict]:
+    return [
+        {"label": "OpenRouter", "env_var": "OPENROUTER_API_KEY", "masked": _masked_key(os.environ.get("OPENROUTER_API_KEY", ""))},
+        {"label": "Gemini", "env_var": "GEMINI_API_KEY", "masked": _masked_key(os.environ.get("GEMINI_API_KEY", ""))},
+        {"label": "Claude (optional)", "env_var": "ANTHROPIC_API_KEY", "masked": _masked_key(os.environ.get("ANTHROPIC_API_KEY", ""))},
+    ]
+
+
 def get_analysis_store():
     store = AnalysisSnapshotStore(os.environ.get("DATABASE_URL", DEFAULT_DATABASE_URL))
     try:
@@ -337,4 +357,6 @@ def report_page(request: Request):
 @app.get("/analysis", response_class=HTMLResponse)
 def analysis_page(request: Request, snapshot_store: AnalysisSnapshotStore = Depends(get_analysis_store)):
     snapshots = snapshot_store.recent(limit=10)
-    return templates.TemplateResponse(request, "analysis.html", {"snapshots": snapshots})
+    return templates.TemplateResponse(
+        request, "analysis.html", {"snapshots": snapshots, "api_keys": _analyzer_key_status()}
+    )

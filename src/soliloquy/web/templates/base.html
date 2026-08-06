@@ -6,15 +6,23 @@
   <title>{% block title %}Soliloquy{% endblock %}</title>
   <style>
     :root {
-      --bg: #faf7f2;
+      /* Light, diffused orange (primary) + its true color-wheel
+         complement, a muted slate blue (secondary) -- the blue is
+         used sparingly (secondary buttons, links, a few accents)
+         rather than 50/50, so the orange stays the dominant note. */
+      --bg: #fdf6ef;
       --surface: #ffffff;
-      --border: #e8e0d4;
-      --text: #2e2a24;
-      --text-muted: #8a8071;
-      --accent: #c1694f;
-      --accent-hover: #a8563f;
-      --accent-soft: #f3e6df;
-      --accent-soft-border: #e6c9ba;
+      --border: #f0dfc9;
+      --text: #3a2e22;
+      --text-muted: #9c8a72;
+      --accent: #e08a4b;
+      --accent-hover: #c97230;
+      --accent-soft: #fbe8d4;
+      --accent-soft-border: #f0cba0;
+      --complement: #4e7c93;
+      --complement-hover: #3c6478;
+      --complement-soft: #e3eef2;
+      --complement-soft-border: #bcd6e0;
       --ok: #3f7d4f;
       --error: #b0483a;
       --radius: 14px;
@@ -146,11 +154,11 @@
     }
     button:hover, .btn:hover { background: var(--accent-hover); }
     button.secondary, .btn.secondary {
-      background: var(--surface);
-      color: var(--text);
-      border: 1px solid var(--border);
+      background: var(--complement-soft);
+      color: var(--complement-hover);
+      border: 1px solid var(--complement-soft-border);
     }
-    button.secondary:hover, .btn.secondary:hover { background: var(--accent-soft); border-color: var(--accent-soft-border); }
+    button.secondary:hover, .btn.secondary:hover { background: var(--complement-soft-border); border-color: var(--complement); }
 
     .status { margin-top: 0.6rem; font-size: 0.87rem; font-weight: 600; }
     .status.ok { color: var(--ok); }

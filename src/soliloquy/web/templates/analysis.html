@@ -6,6 +6,20 @@
      <code>$ANALYSIS_INTERVAL_HOURS</code>), so there's usually something here without asking for
      it. For a specific date range or a shareable write-up instead, use <a href="/report">Report</a>.</p>
 
+  <div class="card">
+    <div class="prompt-label" style="margin-bottom: 0.5rem;">Analysis provider API keys</div>
+    {% for key in api_keys %}
+      <label for="key-{{ key.env_var }}">{{ key.label }} (<code>{{ key.env_var }}</code>)</label>
+      <input type="text" id="key-{{ key.env_var }}" disabled
+             placeholder="Not set"
+             value="{{ key.masked }}">
+    {% endfor %}
+    <p style="font-size: 0.82rem; color: var(--text-muted); margin-top: 0.25rem;">
+      Read-only status -- set these in your <code>.env</code> file (see <code>.env.example</code>).
+      Not editable here since secrets are never stored in the database.
+    </p>
+  </div>
+
   {% if not snapshots %}
     <p>No automatic analysis yet -- it runs on a timer in the background, so check back later,
        or generate one on demand via <a href="/report">Report</a>.</p>

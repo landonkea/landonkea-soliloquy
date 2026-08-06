@@ -7,7 +7,7 @@
 
   <form id="report-form">
     <label>Days back
-      <input type="number" name="days" value="7" min="1" required>
+      <input type="number" name="days" value="30" min="1" required>
     </label>
     <label>Audience
       <select name="audience">
@@ -19,7 +19,7 @@
     <label>Format
       <select name="format">
         <option value="text">Plain text (.txt)</option>
-        <option value="markdown">Markdown (.md)</option>
+        <option value="markdown" selected>Markdown (.md)</option>
         <option value="html">HTML page (.html)</option>
         <option value="pdf">PDF (.pdf)</option>
       </select>

@@ -294,7 +294,34 @@ def test_report_command_requires_output_for_pdf_format(monkeypatch):
     assert exit_code == 1
 
 
+def test_analyze_command_fails_cleanly_when_no_analyzer_is_configured(capsys, monkeypatch):
+    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+    monkeypatch.delenv("OPENROUTER_API_KEY", raising=False)
+    monkeypatch.delenv("GEMINI_API_KEY", raising=False)
+    with EntryStore(TEST_DATABASE_URL) as store:
+        add_entry(store, "an entry")
+
+    exit_code = main(["--db", TEST_DATABASE_URL, "analyze", "--days", "7"])
+
+    assert exit_code == 1
+    assert "Analysis failed" in capsys.readouterr().out
+
+
+def test_report_command_fails_cleanly_with_no_message_dump_when_no_analyzer_is_configured(capsys, monkeypatch):
+    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+    monkeypatch.delenv("OPENROUTER_API_KEY", raising=False)
+    monkeypatch.delenv("GEMINI_API_KEY", raising=False)
+    with EntryStore(TEST_DATABASE_URL) as store:
+        add_entry(store, "an entry")
+
+    exit_code = main(["--db", TEST_DATABASE_URL, "report", "--days", "7"])
+
+    assert exit_code == 1
+    assert "Report generation failed" in capsys.readouterr().out
+
+
 def test_report_command_writes_the_requested_format_to_output(tmp_path, monkeypatch):
+    monkeypatch.setenv("ANALYZER_PROVIDER", "claude")
     monkeypatch.setenv("ANTHROPIC_API_KEY", "fake-key-not-used")
     with EntryStore(TEST_DATABASE_URL) as store:
         add_entry(store, "an entry to analyze")
@@ -310,6 +337,7 @@ def test_report_command_writes_the_requested_format_to_output(tmp_path, monkeypa
 
 
 def test_report_command_writes_real_pdf_bytes_to_output(tmp_path, monkeypatch):
+    monkeypatch.setenv("ANALYZER_PROVIDER", "claude")
     monkeypatch.setenv("ANTHROPIC_API_KEY", "fake-key-not-used")
     with EntryStore(TEST_DATABASE_URL) as store:
         add_entry(store, "an entry to analyze")

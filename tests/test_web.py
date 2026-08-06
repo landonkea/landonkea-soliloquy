@@ -101,8 +101,15 @@ def test_report_returns_400_for_an_unknown_audience(client):
     assert response.status_code == 400
 
 
-def test_report_returns_a_clear_502_when_no_api_key_is_configured(client, monkeypatch):
+def test_report_returns_a_clear_502_when_no_analyzer_provider_is_configured(client, monkeypatch):
+    # Default provider chain is "free" (OpenRouter models, then
+    # Gemini) -- with none of those keys set either, every provider in
+    # the chain fails with a clear "no API key" message, and
+    # FallbackAnalyzer aggregates them rather than hanging on a real
+    # network call.
     monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+    monkeypatch.delenv("OPENROUTER_API_KEY", raising=False)
+    monkeypatch.delenv("GEMINI_API_KEY", raising=False)
     client.post("/entries", data={"text": "an entry to analyze"})
 
     response = client.post("/reports", data={"days": 7, "audience": "self"})
@@ -112,6 +119,7 @@ def test_report_returns_a_clear_502_when_no_api_key_is_configured(client, monkey
 
 
 def test_report_returns_400_for_an_unknown_format(client, monkeypatch):
+    monkeypatch.setenv("ANALYZER_PROVIDER", "claude")
     monkeypatch.setenv("ANTHROPIC_API_KEY", "fake-key-not-used")
     client.post("/entries", data={"text": "an entry"})
 
@@ -139,6 +147,7 @@ def _fake_claude_response():
     ],
 )
 def test_report_returns_the_requested_format(client, monkeypatch, format, content_type, magic):
+    monkeypatch.setenv("ANALYZER_PROVIDER", "claude")
     monkeypatch.setenv("ANTHROPIC_API_KEY", "fake-key-not-used")
     client.post("/entries", data={"text": "an entry to analyze"})
 

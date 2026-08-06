@@ -78,6 +78,26 @@ Out of scope for now (confirmed with the user, not forgotten): the MQTT bridge t
       calculation can hit zero and crash — found by actually generating a PDF, not just writing
       the code
 
+## Extra: free-by-default analysis (OpenRouter + Gemini fallback) ✅ done
+
+- [x] `OpenRouterAnalyzer` and `GeminiAnalyzer` added alongside `ClaudeAnalyzer` in
+      `analyzer.py`, all three sharing one prompt-building/response-parsing implementation
+- [x] `FallbackAnalyzer` — tries a list of providers in order, moves on on ANY failure (missing
+      key, rate limit, bad response), only raises (with every provider's error included) if all
+      fail; a `RateLimitError` subclass exists for future use even though today's fallback logic
+      treats all failures the same
+- [x] `build_free_analyzer()` — the default $0 chain: OpenRouter's free-tagged models, then
+      Gemini's free tier. `get_default_analyzer()` reads `$ANALYZER_PROVIDER` ("free" by default,
+      "claude" to opt into paying) and both `cli.py` and `web/app.py` use it instead of hardcoding
+      Claude
+- [x] CLI (`analyze`/`report`) now fails with a clear one-line message instead of a raw Python
+      traceback when every provider fails — a real bug caught by actually running the command
+      with no API keys configured, not something noticed by reading the code
+- [x] 26 tests for `analyzer.py` (up from 9), all passing against mocked HTTP responses. **Not
+      verified against a real live API call for any of the four providers** — no real API keys
+      available in this environment. Set `OPENROUTER_API_KEY`/`GEMINI_API_KEY`/`ANTHROPIC_API_KEY`
+      and run `soliloquy analyze` yourself to confirm the live path for whichever provider(s) you use
+
 ## Right after this
 
 - [ ] Test the video-capture flow from a real phone (not just desktop browser + synthesized test

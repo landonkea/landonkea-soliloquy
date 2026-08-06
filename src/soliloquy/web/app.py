@@ -26,7 +26,7 @@ from fastapi import Depends, FastAPI, File, Form, HTTPException, Request, Respon
 from fastapi.responses import HTMLResponse, PlainTextResponse, StreamingResponse
 from fastapi.templating import Jinja2Templates
 
-from ..analyzer import ClaudeAnalyzer, NoEntriesError
+from ..analyzer import NoEntriesError, get_default_analyzer
 from ..cli import AUDIENCES, DEFAULT_DATABASE_URL, add_entry, list_entries, report_range
 from ..entry import Entry
 from ..object_storage import ObjectStore
@@ -185,15 +185,15 @@ def post_report(
     if format not in FORMATS:
         raise HTTPException(status_code=400, detail=f"Unknown format {format!r}, must be one of {FORMATS}")
     try:
-        result, entries = report_range(store, ClaudeAnalyzer(), days, audience)
+        result, entries = report_range(store, get_default_analyzer(), days, audience)
     except NoEntriesError:
         raise HTTPException(
             status_code=404, detail=f"No entries for audience '{audience}' in the last {days} days."
         )
     except RuntimeError as exc:
-        # ClaudeAnalyzer raises RuntimeError for a missing API key or a
-        # failed API call -- surface that real message instead of a
-        # generic 500, so "you forgot to set ANTHROPIC_API_KEY" is
+        # Every Analyzer provider raises RuntimeError for a missing API
+        # key or a failed API call -- surface that real message instead
+        # of a generic 500, so "you forgot to set an API key" is
         # actually visible instead of an opaque Internal Server Error.
         raise HTTPException(status_code=502, detail=str(exc))
 

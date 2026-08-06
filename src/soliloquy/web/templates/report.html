@@ -39,7 +39,7 @@
 
     form.addEventListener("submit", async (event) => {
       event.preventDefault();
-      statusEl.textContent = "Generating (this calls Claude, may take a few seconds)...";
+      statusEl.textContent = "Generating (calls an AI provider, may take a few seconds)...";
       statusEl.className = "status";
       outputEl.innerHTML = "";
 

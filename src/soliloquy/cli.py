@@ -160,7 +160,9 @@ def main(argv: list[str] | None = None) -> int:
     transcribe_parser = subparsers.add_parser("transcribe", help="Transcribe an existing audio file into a real entry.")
     transcribe_parser.add_argument("audio_path", help="Path to the .wav file to transcribe.")
 
-    analyze_parser = subparsers.add_parser("analyze", help="Analyze recent entries (requires ANTHROPIC_API_KEY).")
+    analyze_parser = subparsers.add_parser(
+        "analyze", help="Analyze recent entries (free by default -- see $ANALYZER_PROVIDER)."
+    )
     analyze_parser.add_argument("--days", type=int, default=7, help="How many days back to analyze (default: 7).")
 
     share_parser = subparsers.add_parser("share", help="Mark an existing entry as shareable with an audience.")
@@ -171,7 +173,7 @@ def main(argv: list[str] | None = None) -> int:
                                help="Set (--provider) or clear (--no-provider) shareable_with_provider.")
 
     report_parser = subparsers.add_parser(
-        "report", help="Generate a readable, audience-filtered report (requires ANTHROPIC_API_KEY)."
+        "report", help="Generate a readable, audience-filtered report (free by default -- see $ANALYZER_PROVIDER)."
     )
     report_parser.add_argument("--days", type=int, default=7, help="How many days back to report on (default: 7).")
     report_parser.add_argument("--audience", choices=AUDIENCES, default="self",
@@ -206,12 +208,15 @@ def main(argv: list[str] | None = None) -> int:
             for entry in entries:
                 print(f"[{entry.created_at.isoformat()}] {entry.transcript}")
         elif args.command == "analyze":
-            from .analyzer import ClaudeAnalyzer, NoEntriesError
+            from .analyzer import NoEntriesError, get_default_analyzer
             try:
-                result = analyze_range(store, ClaudeAnalyzer(), args.days)
+                result = analyze_range(store, get_default_analyzer(), args.days)
             except NoEntriesError:
                 print(f"No entries in the last {args.days} days to analyze.")
                 return 0
+            except RuntimeError as exc:
+                print(f"Analysis failed: {exc}")
+                return 1
             print(f"\n{result.entry_count} entries, {result.total_word_count} words, last {args.days} days\n")
             print(f"Summary: {result.summary}\n")
             print(f"Mood: {result.mood_notes}\n")
@@ -228,15 +233,18 @@ def main(argv: list[str] | None = None) -> int:
                 return 1
             print(f"Updated sharing for entry {args.entry_id}.")
         elif args.command == "report":
-            from .analyzer import ClaudeAnalyzer, NoEntriesError
+            from .analyzer import NoEntriesError, get_default_analyzer
             if args.format == "pdf" and not args.output:
                 print("--format pdf requires --output <file.pdf> -- PDF bytes can't be printed to a terminal.")
                 return 1
             try:
-                result, entries = report_range(store, ClaudeAnalyzer(), args.days, args.audience)
+                result, entries = report_range(store, get_default_analyzer(), args.days, args.audience)
             except NoEntriesError:
                 print(f"No entries for audience '{args.audience}' in the last {args.days} days.")
                 return 0
+            except RuntimeError as exc:
+                print(f"Report generation failed: {exc}")
+                return 1
             content = build_report_content(result, entries, args.audience, args.days)
             renderer = {"text": format_text, "markdown": format_markdown, "html": format_html, "pdf": format_pdf}[args.format]
             report_output = renderer(content)

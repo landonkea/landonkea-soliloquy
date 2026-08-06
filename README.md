@@ -53,16 +53,21 @@ fact — the recording is the whole interaction.
   be swapped in later without any caller changing. Verified against real synthesized speech
   (macOS `say` → transcribed by Whisper), not just mocked or silent audio — transcript came back
   an exact match.
-- **Analysis** (`soliloquy analyze --days N`) — `ClaudeAnalyzer` (raw HTTP to the Anthropic API,
-  same convention `landonkea-makeItSoNumberOne` uses — `x-api-key` header, pinned API version,
-  no SDK dependency) turns a date range of entries into a real summary, mood notes, and key
-  topics, asked explicitly to be honest rather than generically positive. Built behind a real
-  `Analyzer` protocol. **Verification limit, stated plainly:** this is thoroughly tested against
-  mocked HTTP responses (9 tests — real request shape, malformed/incomplete response handling,
-  missing-credential handling) but has NOT been verified against a real, live Claude API call —
-  that needs a real `ANTHROPIC_API_KEY`, which isn't something available to verify with in the
-  environment this was built in. Set the env var and run `soliloquy analyze` yourself to confirm
-  the live path.
+- **Analysis** (`soliloquy analyze --days N`) — turns a date range of entries into a real
+  summary, mood notes, and key topics, asked explicitly to be honest rather than generically
+  positive. Built behind a real `Analyzer` protocol with four implementations
+  (`src/soliloquy/analyzer.py`): `ClaudeAnalyzer`, `OpenRouterAnalyzer`, `GeminiAnalyzer`, and
+  `FallbackAnalyzer` (tries a list of other Analyzers in order, moving on on any failure). **The
+  default is free, not Claude**: `get_default_analyzer()` returns `build_free_analyzer()` — a
+  chain of OpenRouter's free-tagged models, falling back to Gemini's free tier, so running
+  analysis/reports costs nothing unless you explicitly opt into Claude (`ANALYZER_PROVIDER=claude`
+  + `ANTHROPIC_API_KEY`). Set `OPENROUTER_API_KEY` and/or `GEMINI_API_KEY` for the free path — a
+  provider with no key configured is skipped, not a hard failure, so one of the two is enough.
+  **Verification limit, stated plainly:** all four providers are thoroughly tested against mocked
+  HTTP responses (shared prompt/parsing logic, rate-limit handling, missing-credential handling,
+  fallback-chain behavior) but none has been verified against a real, live API call in the
+  environment this was built in — no real API keys were available to verify with. Set the relevant
+  env var(s) and run `soliloquy analyze` yourself to confirm the live path.
 - **Sharing flags and audience-filtered reports** (`soliloquy share`, `soliloquy report
   --audience`) — every entry has two independent, per-entry flags, `shareable_with_partner` and
   `shareable_with_provider`, both defaulting to private/`False`. These are deliberately NOT one

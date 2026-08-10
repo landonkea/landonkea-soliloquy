@@ -93,7 +93,7 @@ fact. The recording is the whole interaction.
   Pairs with a `journal_entry` plugin in `landonkea-makeItSoNumberOne` (see that repo's
   `desktop/plugins/examples/journal_entry_plugin.py`) so saying "Computer, journal entry: ..."
   saves a Soliloquy entry. Text-only for now, the voice assistant already transcribes the
-  command before publishing, so relaying that transcript is the simple, robust v1; sending raw
+  command before publishing, so relaying that transcript is the simple, proven v1; sending raw
   audio over MQTT is a heavier future enhancement, not needed for this to work end-to-end.
 - **LAN reachability + local-vs-cloud awareness**: confirmed live (not assumed) that the web app
   and all three backends (Postgres/MinIO/Mosquitto) are already reachable from any device on your

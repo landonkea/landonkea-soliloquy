@@ -1,5 +1,5 @@
 # ───────────────────────────────────────────────────────────────────
-# prompts.py — journaling prompts, rotated one per day
+# prompts.py, journaling prompts, rotated one per day
 # ───────────────────────────────────────────────────────────────────
 # The point is reducing "blank page" hesitation before recording or
 # typing an entry -- something to react to instead of staring at an

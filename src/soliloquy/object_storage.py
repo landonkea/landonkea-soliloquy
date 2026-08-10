@@ -1,5 +1,5 @@
 # ───────────────────────────────────────────────────────────────────
-# object_storage.py — S3-compatible storage for audio/video files
+# object_storage.py, S3-compatible storage for audio/video files
 # ───────────────────────────────────────────────────────────────────
 # Raw audio/video should never live inside the database (see
 # storage.py's module comment) -- it belongs in object storage.

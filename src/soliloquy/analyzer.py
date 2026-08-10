@@ -1,5 +1,5 @@
 # ───────────────────────────────────────────────────────────────────
-# analyzer.py — turns a batch of entries into real analysis
+# analyzer.py, turns a batch of entries into real analysis
 # ───────────────────────────────────────────────────────────────────
 # This is the actual point of the app -- everything else (recording,
 # transcription, storage) exists to feed this. A real Analyzer

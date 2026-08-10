@@ -1,5 +1,5 @@
 # ───────────────────────────────────────────────────────────────────
-# scheduler.py — periodic, automatic analysis in the background
+# scheduler.py, periodic, automatic analysis in the background
 # ───────────────────────────────────────────────────────────────────
 # Runs analysis on a timer (default every 6 hours, configurable via
 # $ANALYSIS_INTERVAL_HOURS / $ANALYSIS_WINDOW_DAYS) so a snapshot is

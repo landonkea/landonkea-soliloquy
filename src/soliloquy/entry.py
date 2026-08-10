@@ -1,14 +1,14 @@
 # ───────────────────────────────────────────────────────────────────
-# entry.py — the core data model: one journal entry
+# entry.py, the core data model: one journal entry
 # ───────────────────────────────────────────────────────────────────
 # This is deliberately the smallest possible representation of "one
 # thing the user said to their journal." Everything else in this app
 # (recording, transcription, analysis) either PRODUCES an Entry or
-# CONSUMES one — nothing else needs to know how an Entry got created.
+# CONSUMES one, nothing else needs to know how an Entry got created.
 #
 # audio_path is Optional because the MVP supports typed (text-only)
 # entries too, e.g. for testing the storage/analysis layers without
-# needing a microphone or a transcription model set up yet — see
+# needing a microphone or a transcription model set up yet, see
 # README.md's "What's built vs. what's next" section.
 #
 # video_path is Optional and independent of audio_path -- a video

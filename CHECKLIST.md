@@ -1,36 +1,36 @@
 # Soliloquy build checklist
 
-Living status doc — check here before asking "what's next," this gets updated as each stage
+Living status doc, check here before asking "what's next," this gets updated as each stage
 lands. See `README.md` for what each piece actually does; this file is just status + sequencing.
 
 ## Why this order
 
 Web app (not native apps yet) because "record with the phone's camera app, then hand the file to
-Soliloquy" is just a browser file upload — no camera-permission code to write. Self-hosted
+Soliloquy" is just a browser file upload, no camera-permission code to write. Self-hosted
 Postgres + MinIO now, managed cloud (Supabase/Neon + Cloudflare R2) later, because both speak
-standard protocols (Postgres wire protocol, S3 API) — moving later is a config change, not a
+standard protocols (Postgres wire protocol, S3 API), moving later is a config change, not a
 rewrite. Real backend API + thin web frontend (not logic baked into the browser) so a native app
 later becomes a new client of the same API, not a second implementation.
 
 Out of scope for now (confirmed with the user, not forgotten): face/expression analysis of video,
 and the unrelated CRM/CMS + PWA project.
 
-## Stage 1 — Storage: Postgres + MinIO ✅ done
+## Stage 1, Storage: Postgres + MinIO ✅ done
 
-- [x] `docker-compose.yml` — local Postgres (port 5433, avoids colliding with any Postgres
+- [x] `docker-compose.yml`, local Postgres (port 5433, avoids colliding with any Postgres
       already running natively) + MinIO (port 9000 API / 9001 console)
-- [x] `storage.py` rewritten for Postgres (`psycopg`) — same public interface as before, so
+- [x] `storage.py` rewritten for Postgres (`psycopg`), same public interface as before, so
       nothing above it had to change
-- [x] `object_storage.py` — S3-compatible client (`boto3`) for audio/video files
+- [x] `object_storage.py`, S3-compatible client (`boto3`) for audio/video files
 - [x] `Entry` gains `video_path`, independent of `audio_path`
 - [x] App points at `DATABASE_URL` (defaults to the local docker-compose instance)
 - [x] CI runs against real Postgres + MinIO service containers, not mocks
 - [x] All existing tests pass against the real Postgres backend (68 tests)
 
-## Stage 2 — Backend API (FastAPI) ✅ done
+## Stage 2, Backend API (FastAPI) ✅ done
 
-- [x] `src/soliloquy/web/app.py` — thin FastAPI layer over the existing package functions
-      (`add_entry`, `list_entries`, `report_range`, `store.update_sharing`) — no business logic
+- [x] `src/soliloquy/web/app.py`, thin FastAPI layer over the existing package functions
+      (`add_entry`, `list_entries`, `report_range`, `store.update_sharing`), no business logic
       duplicated into the web layer
 - [x] Routes: `GET/POST /entries`, `POST /entries/audio`, `POST /entries/{id}/share`,
       `POST /reports`, `GET /media/{key}`
@@ -38,68 +38,68 @@ and the unrelated CRM/CMS + PWA project.
 - [x] Tested with FastAPI's `TestClient` against real Postgres + MinIO (8 tests); manually
       smoke-tested against a real running server with `curl`
 
-## Stage 3 — Video capture ✅ done
+## Stage 3, Video capture ✅ done
 
-- [x] `src/soliloquy/video.py` — `extract_audio()` via `ffmpeg`, wraps a real external tool the
+- [x] `src/soliloquy/video.py`, `extract_audio()` via `ffmpeg`, wraps a real external tool the
       same way the (now-removed) CLI-only recorder used to wrap `pyaudio`
 - [x] Tested against a real synthesized test video (ffmpeg's own `lavfi` test source), not just
-      mocks (3 tests) — plus an end-to-end test of the upload route against real Postgres + MinIO
+      mocks (3 tests), plus an end-to-end test of the upload route against real Postgres + MinIO
 - [x] `POST /entries/video` route: upload video → store in object storage → extract audio → store
       that too → transcribe → create an `Entry` with both `video_path` and `audio_path` set
 - [x] Verified against a real running server with `curl` (real ffmpeg extraction, real object
       storage round trip for both files). **Not yet verified against an actual phone-recorded
-      video file** — only a synthesized test clip so far; worth doing once stage 4's upload page
+      video file**, only a synthesized test clip so far; worth doing once stage 4's upload page
       exists to test from an actual phone.
 
-## Stage 4 — Web GUI ✅ done
+## Stage 4, Web GUI ✅ done
 
 - [x] Jinja2 templates, no separate JS build: entries list (with audio/video playback), new-entry
-      page (text/audio/video upload — the video `<input>` with `capture` is what makes "record
+      page (text/audio/video upload, the video `<input>` with `capture` is what makes "record
       with the phone's camera, then upload" work with zero extra code), share toggles, report
       generator
 - [x] Opened and used in a real desktop browser: added a real text entry, toggled a share flag
       live (confirmed it persisted), generated a report and caught a real bug in the process (a
-      missing API key surfaced as an opaque "Internal Server Error" instead of a clear message —
+      missing API key surfaced as an opaque "Internal Server Error" instead of a clear message,
       fixed, now shows the actual reason)
-- [ ] **Not yet tested from an actual phone** — desktop browser only so far. Worth doing next:
+- [ ] **Not yet tested from an actual phone**, desktop browser only so far. Worth doing next:
       open the site from a phone on the same network/tailnet and try the camera-capture upload for
       real (video upload has only been verified with a synthesized test clip + `curl` so far, not
       a real phone recording through the actual page)
 
 ## Extra: report export formats ✅ done
 
-- [x] `src/soliloquy/report.py` — one shared `ReportContent`, rendered four ways:
+- [x] `src/soliloquy/report.py`, one shared `ReportContent`, rendered four ways:
       `format_text`, `format_markdown`, `format_html`, `format_pdf` (via `fpdf2`, no system deps)
 - [x] Web: Report page has a Format selector; download link + inline preview (text/markdown show
       as `<pre>`, html previews in an iframe, pdf previews in an embedded viewer) for all four
 - [x] Real bug caught and fixed during this: `fpdf2`'s `multi_cell` needs the cursor reset to the
       left margin after each cell (`new_x=XPos.LMARGIN, new_y=YPos.NEXT`) or the next cell's width
-      calculation can hit zero and crash — found by actually generating a PDF, not just writing
+      calculation can hit zero and crash, found by actually generating a PDF, not just writing
       the code
 
 ## Extra: free-by-default analysis (OpenRouter + Gemini fallback) ✅ done
 
 - [x] `OpenRouterAnalyzer` and `GeminiAnalyzer` added alongside `ClaudeAnalyzer` in
       `analyzer.py`, all three sharing one prompt-building/response-parsing implementation
-- [x] `FallbackAnalyzer` — tries a list of providers in order, moves on on ANY failure (missing
+- [x] `FallbackAnalyzer`, tries a list of providers in order, moves on on ANY failure (missing
       key, rate limit, bad response), only raises (with every provider's error included) if all
       fail; a `RateLimitError` subclass exists for future use even though today's fallback logic
       treats all failures the same
-- [x] `build_free_analyzer()` — the default $0 chain: OpenRouter's free-tagged models, then
+- [x] `build_free_analyzer()`, the default $0 chain: OpenRouter's free-tagged models, then
       Gemini's free tier. `get_default_analyzer()` reads `$ANALYZER_PROVIDER` ("free" by default,
       "claude" to opt into paying) and `web/app.py` uses it instead of hardcoding Claude
 - [x] The web app's Report/Analysis routes surface a clear message (not a raw error) when every
-      provider fails — a real bug caught by actually running with no API keys configured
+      provider fails, a real bug caught by actually running with no API keys configured
 - [x] 26 tests for `analyzer.py` (up from 9), all passing against mocked HTTP responses. **Not
-      verified against a real live API call for any of the four providers** — no real API keys
+      verified against a real live API call for any of the four providers**, no real API keys
       available in this environment. Set `OPENROUTER_API_KEY`/`GEMINI_API_KEY`/`ANTHROPIC_API_KEY`
       and generate a report yourself to confirm the live path for whichever provider(s) you use
 
 ## Extra: automatic background analysis ✅ done
 
-- [x] `analysis_store.py` — `AnalysisSnapshotStore`, a persisted history of past `AnalysisResult`s
+- [x] `analysis_store.py`, `AnalysisSnapshotStore`, a persisted history of past `AnalysisResult`s
       (separate table/concept from entries -- a snapshot is derived and disposable, an entry isn't)
-- [x] `scheduler.py` — `run_scheduled_analysis()` (directly testable, analyzer/db overridable) +
+- [x] `scheduler.py`, `run_scheduled_analysis()` (directly testable, analyzer/db overridable) +
       `start_scheduler()` (APScheduler `BackgroundScheduler`, interval configurable via
       `$ANALYSIS_INTERVAL_HOURS`, default **6 hours**, window via `$ANALYSIS_WINDOW_DAYS`, default
       1 day). Wired into the web app's FastAPI `lifespan`, started/stopped with the server.
@@ -117,20 +117,20 @@ and the unrelated CRM/CMS + PWA project.
 ## Extra: CLI removed, web-only ✅ done
 
 - [x] Shared logic (`add_entry`, `list_entries`, `analyze_range`, `report_range`, `AUDIENCES`,
-      `DEFAULT_DATABASE_URL`) moved out of `cli.py` into `src/soliloquy/actions.py` — the web
+      `DEFAULT_DATABASE_URL`) moved out of `cli.py` into `src/soliloquy/actions.py`, the web
       app's routes, the scheduled analysis job, and the MQTT listener all call these same
       functions, so nothing lost logic by losing the CLI wrapper around it
 - [x] Deleted `cli.py` (the argparse interface) and `recorder.py` + its tests (only the CLI's
-      `record` command ever used local mic recording via `pyaudio` — the web app records
+      `record` command ever used local mic recording via `pyaudio`, the web app records
       client-side, via the browser's own file/camera picker, so this was dead code once the CLI
       was gone)
 - [x] `pyproject.toml`: removed the `soliloquy` console script and the `audio` extra (`pyaudio`)
 - [x] Tests migrated: `test_cli.py` → `test_actions.py` (pure-function tests kept; the
-      argparse-`main()`-specific tests were dropped since the same behavior — share, report
-      formats, clean failure messages — is already covered by `test_web.py`'s route tests, so no
+      argparse-`main()`-specific tests were dropped since the same behavior, share, report
+      formats, clean failure messages, is already covered by `test_web.py`'s route tests, so no
       coverage was lost)
 - [x] Verified: full suite green (109 tests), and the web server starts clean with `python -m
-      soliloquy.web` — no leftover imports from the deleted `cli.py`
+      soliloquy.web`, no leftover imports from the deleted `cli.py`
 
 ## MQTT bridge to makeItSoNumberOne ✅ done
 
@@ -146,11 +146,11 @@ and the unrelated CRM/CMS + PWA project.
       active third-party plugin).
 - [x] Real end-to-end verification, both directions: confirmed the plugin loads through the real
       `discover_plugins()` mechanism, ran makeItSoNumberOne's full test suite (194 tests, all
-      still passing), and did a genuine cross-repo round trip — called the plugin's `execute()`
+      still passing), and did a genuine cross-repo round trip, called the plugin's `execute()`
       against a real running Mosquitto broker and a real running Soliloquy server, confirmed the
       entry actually landed in Soliloquy's database and rendered on the Entries page.
 - **Known gap**: `paho-mqtt` isn't installed in makeItSoNumberOne's own venv by default (it's
-  commented out in `requirements.txt`, like `pyautogui`, since it's optional) — verification used
+  commented out in `requirements.txt`, like `pyautogui`, since it's optional), verification used
   Soliloquy's venv as a stand-in Python environment (the plugin has no makeItSoNumberOne-specific
   imports beyond a local relative import and the generic `paho-mqtt` package). To actually use
   this for real, `pip install paho-mqtt` in whichever environment runs `make_it_so.py`.
@@ -159,38 +159,38 @@ and the unrelated CRM/CMS + PWA project.
 
 - **Confirmed live, not assumed**: the web app (`uvicorn` binds `0.0.0.0`) and Postgres/MinIO/
   Mosquitto (all `docker-compose` port publishes are `0.0.0.0`, not `127.0.0.1`) are ALL already
-  reachable from any device on the LAN today, no code change needed — verified by hitting this
+  reachable from any device on the LAN today, no code change needed, verified by hitting this
   machine's actual LAN IP from `curl` and getting real responses back.
 - **Known real gap, not yet addressed**: because of the above, Postgres/MinIO's default dev
   credentials and Mosquitto's anonymous auth are reachable by anything else on the same network,
   not just this machine. Fine for a single trusted home LAN; worth locking down (real
   credentials, auth on Mosquitto, or binding those three to `127.0.0.1` while leaving only the
   web app on `0.0.0.0`) before using this somewhere less trusted.
-- [x] `deployment_mode.py` — `get_deployment_mode()` inspects `DATABASE_URL`/`S3_ENDPOINT_URL`/
+- [x] `deployment_mode.py`, `get_deployment_mode()` inspects `DATABASE_URL`/`S3_ENDPOINT_URL`/
       `MQTT_HOST` and returns `"local"` if all resolve to localhost/a private LAN address, or
       `"cloud"` if any is a real public host. Purely informational (no refuse-to-start, no loud
-      warning, per explicit direction) — prints one line at web app startup via
+      warning, per explicit direction), prints one line at web app startup via
       `describe_deployment_mode()`. 10 tests; verified live in both modes (real local startup, and
-      a real startup with `MQTT_HOST` pointed at a fake public hostname) — confirmed the correct
+      a real startup with `MQTT_HOST` pointed at a fake public hostname), confirmed the correct
       one-liner prints both times.
 
 ## Extra: journaling prompts ✅ done
 
-- [x] `prompts.py` — 116 hand-written prompts, one rotated in per calendar day (deterministic —
+- [x] `prompts.py`, 116 hand-written prompts, one rotated in per calendar day (deterministic,
       `date.toordinal() % len(PROMPTS)`, not random per page load, so the prompt is stable all
       day and the sequence is reproducible). Cycle repeats every ~4 months.
-- [x] Shown on the New Entry page above all three entry methods (typed/audio/video) — the point
+- [x] Shown on the New Entry page above all three entry methods (typed/audio/video), the point
       is reducing blank-page hesitation regardless of which way you're adding an entry.
 - [x] 8 tests (`prompts.py`) + 1 web test confirming the page actually renders today's prompt.
       Verified visually in a real browser.
 
 ## Extra: rotating encouraging tips ✅ done
 
-- [x] `tips.py` — 40 hand-written, genuine encouraging/practical mental-health tips (grounding
-      techniques, self-compassion reminders, DBT/CBT-style skills — not generic "just think
+- [x] `tips.py`, 40 hand-written, genuine encouraging/practical mental-health tips (grounding
+      techniques, self-compassion reminders, DBT/CBT-style skills, not generic "just think
       positive" phrasing), same deterministic daily rotation as `prompts.py`.
 - [x] Shown on Entries, Report, and Analysis pages (not New Entry, which already has its own
-      rotating journaling prompt — two different rotating boxes on one page would be clutter, not
+      rotating journaling prompt, two different rotating boxes on one page would be clutter, not
       double the value). Styled in the complement blue to visually distinguish from the orange
       prompt box.
 - [x] 6 tests (`tips.py`) + 3 web tests confirming each of the three pages actually renders
@@ -198,12 +198,12 @@ and the unrelated CRM/CMS + PWA project.
 
 ## Extra: one-click startup ✅ done
 
-- [x] `start.command` — double-click in Finder (or `./start.command`) to run everything: checks
+- [x] `start.command`, double-click in Finder (or `./start.command`) to run everything: checks
       Docker is running, installs `ffmpeg` via Homebrew if missing, `docker compose up -d`,
       creates/updates the Python venv, waits for Postgres to be ready, then starts the web app.
-      Safe to run repeatedly — every step is a no-op if already done.
+      Safe to run repeatedly, every step is a no-op if already done.
 - [x] Verified for real, twice: once with an existing `.venv` (fast path), once with `.venv`
-      removed entirely to simulate a genuine first-ever run — both times ended with a real HTTP
+      removed entirely to simulate a genuine first-ever run, both times ended with a real HTTP
       200 from the running server, and the printed LAN address was confirmed reachable too.
 
 ## Extra: visual redesign + upload/capture choice + delete ✅ done
@@ -212,42 +212,42 @@ and the unrelated CRM/CMS + PWA project.
       typography/spacing/buttons) instead of bare default styling. Header restructured to two
       rows (brand name, then nav below it) per explicit request.
 - [x] New Entry page redesigned: a type selector (Text/Audio/Video) shown first, prompt still
-      above it. Audio/Video sections each offer two explicit choices — "Upload from device" (no
+      above it. Audio/Video sections each offer two explicit choices, "Upload from device" (no
       `capture` attribute, opens the normal file/photo picker) vs "Record now" (has `capture`,
-      opens the camera/mic directly) — fixing the earlier behavior where video always jumped
+      opens the camera/mic directly), fixing the earlier behavior where video always jumped
       straight to the camera with no upload option.
 - [x] Share checkboxes on the Entries page: stacked vertically, left-aligned (was side-by-side).
-- [x] `DELETE /entries/{id}` route (didn't exist before) — deletes the DB row and best-effort
+- [x] `DELETE /entries/{id}` route (didn't exist before), deletes the DB row and best-effort
       cleans up its audio/video objects in MinIO too, not just the row. Delete button added to
       each entry card with a confirm() prompt before it runs. 3 new tests.
 - [x] Verified live end-to-end, including catching and correctly diagnosing an apparent delete
       failure that turned out to be concurrent testing (the user testing live on their own device
-      at the same time as this session) rather than a real bug — confirmed via server logs.
+      at the same time as this session) rather than a real bug, confirmed via server logs.
 
 ## Extra: `soliloquy.internal` LAN name, self-healing against IP changes ✅ done
 
 - [x] `dnsmasq` installed via Homebrew, running as a system service (`sudo brew services start
-      dnsmasq`) — `/opt/homebrew/etc/dnsmasq.conf` resolves `soliloquy.internal` to this Mac's
+      dnsmasq`), `/opt/homebrew/etc/dnsmasq.conf` resolves `soliloquy.internal` to this Mac's
       LAN IP, forwards everything else normally. `.internal` specifically (not `.local`, not a
-      real TLD like `.com`) — reserved (RFC 9476) for exactly this: a private name that will
+      real TLD like `.com`), reserved (RFC 9476) for exactly this: a private name that will
       never collide with, or be mistaken for, a real public domain.
-- [x] `scripts/update-soliloquy-dns.sh` — since the LAN IP is DHCP-assigned and changes every few
+- [x] `scripts/update-soliloquy-dns.sh`, since the LAN IP is DHCP-assigned and changes every few
       hours/days, this detects the *current* IP and rewrites/reloads dnsmasq only when it's
       actually different from what's configured (a no-op otherwise). Runs automatically every 5
       minutes via a LaunchAgent (`~/Library/LaunchAgents/com.soliloquy.dns-update.plist`, not
-      tracked in the repo since it's machine-specific — the script it calls is).
+      tracked in the repo since it's machine-specific, the script it calls is).
 - [x] Verified for real, twice: manually forced a wrong IP into the config and confirmed the
       script corrected it, then did it again and confirmed the LaunchAgent caught it *on its own*
-      via `launchctl kickstart` (not a manual script run) — the self-healing actually self-heals.
+      via `launchctl kickstart` (not a manual script run), the self-healing actually self-heals.
 - **Remaining manual step, can't be done for you**: point each phone/device's WiFi DNS setting at
   this Mac's IP (Settings → WiFi → network details → DNS → Manual) so it actually uses dnsmasq to
-  resolve `soliloquy.internal` — requires the device's own settings, not something scriptable
+  resolve `soliloquy.internal`, requires the device's own settings, not something scriptable
   from here. Router-level DHCP config (to make this automatic for every device on the LAN) would
   need router admin access, which wasn't available in this session.
 - **Real bug found and fixed**: `soliloquy.internal` didn't work even on this Mac at first,
   because this Mac's own network DNS was still pointed at the router, not at dnsmasq. Fixed with
   `networksetup -setdnsservers Wi-Fi 127.0.0.1`. That fix immediately broke normal internet
-  browsing, though — macOS auto-rewrote `/etc/resolv.conf` to `nameserver 127.0.0.1` once the Mac's
+  browsing, though, macOS auto-rewrote `/etc/resolv.conf` to `nameserver 127.0.0.1` once the Mac's
   DNS pointed there, and dnsmasq's default behavior is to read that same file for where to
   forward everything else, creating a self-referential loop (dnsmasq asking itself, forever;
   confirmed via `dig` returning `REFUSED`). Fixed with `no-resolv` + explicit `server=1.1.1.1` /
@@ -255,7 +255,7 @@ and the unrelated CRM/CMS + PWA project.
   directions afterward: `soliloquy.internal` resolves AND real domains (`google.com`) still
   resolve, confirmed in a real browser too.
 - **Note on `sudo`**: dnsmasq needs root to bind port 53 (a privileged port) and to run as a
-  system-wide LaunchDaemon that starts at boot — not avoidable for a real local DNS server. The
+  system-wide LaunchDaemon that starts at boot, not avoidable for a real local DNS server. The
   automatic 5-minute IP-update script normally restarts it without a password prompt (it's just
   signaling the already-loaded daemon); a full config change like this fix needed one manual
   `sudo brew services restart dnsmasq` to take effect.
@@ -264,32 +264,32 @@ and the unrelated CRM/CMS + PWA project.
 
 - **Pivoted away from `soliloquy.internal`/dnsmasq**: that approach required pointing every
   device's own DNS settings at this Mac, which was explicitly rejected. Also explicitly rejected:
-  renaming the Mac itself (`ComputerName`/`LocalHostName`) — this machine runs ~20 other
+  renaming the Mac itself (`ComputerName`/`LocalHostName`), this machine runs ~20 other
   apps/repos that would each need their own name, so the Mac's own identity has to stay untouched.
 - [x] `scripts/soliloquy-mdns.sh` + `~/Library/LaunchAgents/com.soliloquy.mdns.plist` (not
-      tracked, machine-specific) — registers a real, separate mDNS service name
+      tracked, machine-specific), registers a real, separate mDNS service name
       (`soliloquy.local`) via `dns-sd -P`, independent of the Mac's own Bonjour hostname. Re-checks
       the LAN IP and re-registers on change, same self-healing pattern as the dnsmasq script.
       Verified `scutil --get LocalHostName` is unchanged (still `Landons-MacBook-Pro`) before and
       after.
-- [x] Caddy (`brew install caddy`, `Caddyfile` at repo root + `/opt/homebrew/etc/Caddyfile`) — a
+- [x] Caddy (`brew install caddy`, `Caddyfile` at repo root + `/opt/homebrew/etc/Caddyfile`), a
       reverse proxy (not a redirect: the browser talks to Caddy on port 80 the whole time, Caddy
       forwards to the app on 8000 behind the scenes) so `http://soliloquy.local` works with no
       port typed at all.
 - **Real bug found and fixed**: Caddy silently failed to bind port 80 because an unrelated,
-  orphaned `docker-web-1` (nginx) container — 12 days old, from a since-deleted project directory
-  — was already holding it. Per explicit instruction, stopped ALL running Docker containers, then
+  orphaned `docker-web-1` (nginx) container, 12 days old, from a since-deleted project directory
+ , was already holding it. Per explicit instruction, stopped ALL running Docker containers, then
   brought Soliloquy's own stack back up plus Caddy; confirmed clean afterward.
 - [x] Verified for real: `curl http://soliloquy.local/` (no port) → 200 with the correct page
       title, then confirmed again in an actual browser on this Mac.
 - **Same manual step as `.internal` before it**: still requires each device to resolve mDNS
-  (`.local`), which most phones/laptops do out of the box with zero configuration — that's the
+  (`.local`), which most phones/laptops do out of the box with zero configuration, that's the
   whole point of this pivot versus dnsmasq.
 
 ## Extra: color scheme, code refactor pass, analysis/report defaults ✅ done
 
 - [x] Default color scheme: light diffused orange primary (`--accent`) + its true color-wheel
-      complement, a muted slate blue (`--complement`) — used purposefully (secondary buttons,
+      complement, a muted slate blue (`--complement`), used purposefully (secondary buttons,
       tip-box vs prompt-box, "Upload from device" vs "Record now"), not a flat 50/50 split so
       orange stays the dominant note. Lives in `base.html`'s `:root` CSS variables.
 - [x] Refactor pass across the whole codebase: `pyflakes`-clean, `_HttpAnalyzer` base class in
@@ -297,8 +297,8 @@ and the unrelated CRM/CMS + PWA project.
       `_entries_in_last_days()` extracted in `actions.py`, `_topics_line()` extracted in
       `report.py`, `_upload_and_transcribe_audio()` + a single `_REPORT_FORMATS` dict replacing
       three parallel dicts in `web/app.py`.
-- [x] Analysis page now shows OpenRouter/Gemini/Claude API key status (masked — first 4 + last 4
-      characters, never the full key — or "Not set") so it's visible at a glance without touching
+- [x] Analysis page now shows OpenRouter/Gemini/Claude API key status (masked, first 4 + last 4
+      characters, never the full key, or "Not set") so it's visible at a glance without touching
       environment variables.
 - [x] Report page defaults changed: 30 days (was 7), markdown format (was text).
 
@@ -309,21 +309,21 @@ and the unrelated CRM/CMS + PWA project.
 - [x] `WhisperTranscriber`'s default model upgraded from `"base"` to `"small"` (~2GB RAM, ~3-4x
       realtime on CPU) for meaningfully better transcription accuracy.
 - [x] Manual transcript editing: `store.update_transcript()` + `POST /entries/{id}/transcript` +
-      inline edit/save/cancel UI on the Entries page — so a wrong word/phrase can be fixed by hand
+      inline edit/save/cancel UI on the Entries page, so a wrong word/phrase can be fixed by hand
       without needing to re-record.
 - [x] **Voice isolation + loudness normalization** (`noise_reduction.py`), run on every audio/video
       upload before transcription and storage:
   - DeepFilterNet3 (a real neural network trained to separate speech from background noise, not
-    just a steady-hiss filter) — chosen specifically because it also handles *irregular* noise
+    just a steady-hiss filter), chosen specifically because it also handles *irregular* noise
     (wind, a dog barking, sheets moving), which a simpler ffmpeg-only filter can't.
-  - ffmpeg's `speechnorm` + `alimiter` afterward — brings quiet passages up and caps everything
+  - ffmpeg's `speechnorm` + `alimiter` afterward, brings quiet passages up and caps everything
     just under clipping, so recordings come out consistent without ever needing to raise your
     voice.
   - **Real, non-trivial installation blocker resolved**: DeepFilterNet's native dependency
-    (`deepfilterlib`) needs a Rust toolchain to build — installed via `rustup` (official installer,
+    (`deepfilterlib`) needs a Rust toolchain to build, installed via `rustup` (official installer,
     one-time). Then DeepFilterNet's own bundled `torchaudio` usage turned out to reference APIs
     (`torchaudio.backend.common.AudioMetaData`, `torchaudio.load`/`save`/`info`) that current
-    torchaudio releases have removed entirely — worked around by stubbing the missing import (we
+    torchaudio releases have removed entirely, worked around by stubbing the missing import (we
     never call DeepFilterNet's own file I/O) and doing all real audio I/O ourselves via `ffmpeg` +
     `soundfile` instead. See `noise_reduction.py`'s module docstring.
   - **Real crash found and fixed**: torch's compiled C extension segfaults if it's first
@@ -331,14 +331,14 @@ and the unrelated CRM/CMS + PWA project.
     background worker thread pool, so the first upload would reliably crash the whole process.
     Fixed with `noise_reduction.preload()`, called from the app's startup lifecycle (`_lifespan`)
     so torch loads on the main thread before any request can reach a worker thread. Also fixed the
-    test fixture, which was creating `TestClient(app)` without a `with` block — meaning FastAPI's
+    test fixture, which was creating `TestClient(app)` without a `with` block, meaning FastAPI's
     startup/shutdown lifecycle (and therefore `preload()`) never ran in tests at all, masking the
     bug there.
   - Shared `ffmpeg_utils.py` extracted (`run_ffmpeg()`, `FfmpegNotFoundError`) so `video.py` and
     `noise_reduction.py` don't each duplicate "is ffmpeg on PATH / did it exit non-zero" handling.
   - Verified live against the real running server (not just tests): real audio upload → denoised,
-    normalized, transcribed, stored — twice in a row, clean shutdown, no crash.
-  - **Not yet validated against a real human voice recording** — testing so far used macOS's
+    normalized, transcribed, stored, twice in a row, clean shutdown, no crash.
+  - **Not yet validated against a real human voice recording**, testing so far used macOS's
     built-in text-to-speech (`say`) mixed with synthetic noise, since that's what's scriptable
     here. DeepFilterNet is trained on real human speech and may behave differently (likely
     better) on an actual recorded voice than on TTS audio. Worth a real test recording once you're
@@ -346,21 +346,21 @@ and the unrelated CRM/CMS + PWA project.
 
 ## Extra: local automated backups ✅ done
 
-- [x] `scripts/backup.sh` — daily backup of both real data stores: `pg_dump` of Postgres (all
+- [x] `scripts/backup.sh`, daily backup of both real data stores: `pg_dump` of Postgres (all
       entries/transcripts/sharing flags) and a full `rclone copy` of the MinIO bucket (every
       audio/video file), into a timestamped folder under `~/soliloquy-backups/`. Keeps the last 14
       days, prunes older ones automatically each run.
-- [x] `~/Library/LaunchAgents/com.soliloquy.backup.plist` (not tracked — machine-specific, same
-      pattern as the mDNS/dnsmasq LaunchAgents) — runs the script daily at 3am via launchd. If the
+- [x] `~/Library/LaunchAgents/com.soliloquy.backup.plist` (not tracked, machine-specific, same
+      pattern as the mDNS/dnsmasq LaunchAgents), runs the script daily at 3am via launchd. If the
       Mac is asleep at 3am, launchd runs it as soon as the Mac next wakes, rather than skipping it.
 - [x] Verified for real: ran it against the actual live database and MinIO bucket, not a test
-      instance — produced a real `postgres.sql.gz` (containing an actual test entry, confirmed by
+      instance, produced a real `postgres.sql.gz` (containing an actual test entry, confirmed by
       grepping the decompressed dump) and a real `minio-objects/` folder (230 real files, 5.9MB).
 - **Setup needed on any other machine this ever runs from** (not automatable from here): `brew
-  install rclone`, then an `rclone.conf` pointing at the local MinIO — see README's Backups
+  install rclone`, then an `rclone.conf` pointing at the local MinIO, see README's Backups
   section for the exact config. Machine-specific credentials file, not tracked in git.
 - **What this does and doesn't protect against**: protects against accidental deletes, a bad
-  `DELETE`, or Docker/Postgres corruption — there's always a second copy on disk. Does **not**
+  `DELETE`, or Docker/Postgres corruption, there's always a second copy on disk. Does **not**
   protect against this Mac's disk itself failing, since both the original and the backup currently
   live on the same physical disk. See README's Backups section for free offsite-redundancy options
   to close that gap, and the tradeoffs between them.
@@ -368,21 +368,21 @@ and the unrelated CRM/CMS + PWA project.
 ## Right after this
 
 - [ ] Test the video-capture flow from a real phone (not just desktop browser + synthesized test
-      video) — this is the one part of the original ask ("record with the phone's camera app,
+      video), this is the one part of the original ask ("record with the phone's camera app,
       then hand the file to Soliloquy") not yet verified on an actual phone
 - [ ] Record a real journal entry with your actual voice to hear how DeepFilterNet + normalization
-      actually sounds — everything so far has been verified with synthesized TTS audio, not a real
+      actually sounds, everything so far has been verified with synthesized TTS audio, not a real
       human recording
 - [ ] Set a real `ANTHROPIC_API_KEY`/`OPENROUTER_API_KEY`/`GEMINI_API_KEY` to verify the
       Report/Analysis happy path end-to-end (currently only the error path is verified here)
-- [ ] Decide on and implement real LAN/cloud security hardening (see above) — `deployment_mode.py`
+- [ ] Decide on and implement real LAN/cloud security hardening (see above), `deployment_mode.py`
       only describes the situation today, it doesn't yet change any actual behavior
 
 ## After that (not started, no immediate plan)
 
 - [ ] Move from self-hosted Postgres/MinIO to managed cloud (Supabase/Neon + Cloudflare R2) once
-      the self-hosted version has been used for real for a while — same interfaces, config change
+      the self-hosted version has been used for real for a while, same interfaces, config change
 - [ ] Face/expression analysis of stored video (a genuinely new analyzer, not a re-use of the
       transcript pipeline)
 - [ ] Native mobile app(s), once the web app has proven the product is worth the extra platform
-      work — would be a new client of the same backend API, not a rewrite
+      work, would be a new client of the same backend API, not a rewrite

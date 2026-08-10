@@ -1,5 +1,5 @@
 # ───────────────────────────────────────────────────────────────────
-# mqtt_bridge.py — turns an MQTT message into a journal entry
+# mqtt_bridge.py, turns an MQTT message into a journal entry
 # ───────────────────────────────────────────────────────────────────
 # The Soliloquy side of the voice-triggered entry pipeline:
 # landonkea-makeItSoNumberOne's `journal_entry` plugin (see that

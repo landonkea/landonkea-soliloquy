@@ -1,5 +1,5 @@
 # ───────────────────────────────────────────────────────────────────
-# analysis_store.py — persisted snapshots of past AnalysisResults
+# analysis_store.py, persisted snapshots of past AnalysisResults
 # ───────────────────────────────────────────────────────────────────
 # Exists so scheduled/automatic analysis (see scheduler.py) has
 # somewhere to land -- without this, a periodic analysis run would

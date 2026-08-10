@@ -1,5 +1,5 @@
 # ───────────────────────────────────────────────────────────────────
-# storage.py — Postgres-backed entry storage
+# storage.py, Postgres-backed entry storage
 # ───────────────────────────────────────────────────────────────────
 # EntryStore talks to a real Postgres database via a DATABASE_URL
 # connection string (postgres://user:pass@host:port/db), not a local
@@ -17,13 +17,13 @@
 # `range_between(start, end)` exists now, with only a handful of
 # entries likely to ever be created by hand while testing, because
 # the whole point of per-day/week/month analysis (see README's
-# roadmap) is querying date ranges — building that query method
+# roadmap) is querying date ranges, building that query method
 # alongside the storage layer itself, instead of bolting it on later,
 # is what keeps this from becoming "a pile of entries with no way to
 # ask a real question about them."
 #
 # _ensure_columns() is a deliberate stopgap, not a real migration
-# system — fine at this project's current size (see
+# system, fine at this project's current size (see
 # landonkea-apple-products-scraper's own history for exactly why this
 # doesn't stay fine forever: it moved to real Alembic migrations once
 # it had real production data and more than one schema change to
@@ -117,7 +117,7 @@ class EntryStore:
         return [self._row_to_entry(row) for row in rows]
 
     def range_between(self, start: datetime, end: datetime) -> list[Entry]:
-        """Entries with created_at in [start, end) — the building block
+        """Entries with created_at in [start, end), the building block
         every day/week/month rollup in the analysis module is just a
         different (start, end) pair around. Does NOT filter by sharing
         flags -- see cli.py's report command for audience filtering,

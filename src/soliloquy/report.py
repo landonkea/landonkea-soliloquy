@@ -1,5 +1,5 @@
 # ───────────────────────────────────────────────────────────────────
-# report.py — turns an AnalysisResult + entries into a readable report
+# report.py, turns an AnalysisResult + entries into a readable report
 # ───────────────────────────────────────────────────────────────────
 # ReportContent is the one shared representation of "what goes in a
 # report" -- built once from an AnalysisResult + the (already

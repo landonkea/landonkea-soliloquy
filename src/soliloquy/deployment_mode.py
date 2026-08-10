@@ -1,5 +1,5 @@
 # ───────────────────────────────────────────────────────────────────
-# deployment_mode.py — is this pointed at localhost/LAN, or the cloud?
+# deployment_mode.py, is this pointed at localhost/LAN, or the cloud?
 # ───────────────────────────────────────────────────────────────────
 # A lightweight, informational signal (not an access-control boundary
 # by itself) derived from where the app is actually configured to

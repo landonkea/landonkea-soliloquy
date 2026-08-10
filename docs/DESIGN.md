@@ -1,4 +1,4 @@
-# landonkea-soliloquy — Design & Workflow
+# landonkea-soliloquy - Design & Workflow
 
 ## High-Level Overview
 

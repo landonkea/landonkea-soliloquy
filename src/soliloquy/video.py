@@ -1,5 +1,5 @@
 # ───────────────────────────────────────────────────────────────────
-# video.py — pulls the audio track out of a video file
+# video.py, pulls the audio track out of a video file
 # ───────────────────────────────────────────────────────────────────
 # Video entries reuse the EXACT SAME transcription/analysis pipeline
 # as audio entries -- extract_audio() is the only new step, and it

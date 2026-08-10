@@ -1,5 +1,5 @@
 # ───────────────────────────────────────────────────────────────────
-# tips.py — encouraging, practical mental-health tips, rotated daily
+# tips.py, encouraging, practical mental-health tips, rotated daily
 # ───────────────────────────────────────────────────────────────────
 # Same rotation pattern as prompts.py (deterministic by calendar date,
 # not random per page load), shown on pages OTHER than New Entry --

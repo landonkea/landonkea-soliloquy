@@ -1,6 +1,6 @@
 #!/bin/bash
 # ───────────────────────────────────────────────────────────────────
-# soliloquy-mdns.sh — publishes "soliloquy.local" via real mDNS
+# soliloquy-mdns.sh, publishes "soliloquy.local" via real mDNS
 # ───────────────────────────────────────────────────────────────────
 # Registers a DEDICATED mDNS hostname ("soliloquy.local") pointed at
 # this Mac's current LAN IP, separate from -- and without touching --

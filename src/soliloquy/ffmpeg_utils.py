@@ -1,5 +1,5 @@
 # ───────────────────────────────────────────────────────────────────
-# ffmpeg_utils.py — shared "run ffmpeg, fail clearly" helper
+# ffmpeg_utils.py, shared "run ffmpeg, fail clearly" helper
 # ───────────────────────────────────────────────────────────────────
 # Used by both video.py (audio extraction) and noise_reduction.py
 # (voice isolation + normalization) -- pulled out so the

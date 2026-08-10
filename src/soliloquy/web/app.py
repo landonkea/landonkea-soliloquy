@@ -1,5 +1,5 @@
 # ───────────────────────────────────────────────────────────────────
-# web/app.py — the HTTP API, a thin layer over the existing package
+# web/app.py, the HTTP API, a thin layer over the existing package
 # ───────────────────────────────────────────────────────────────────
 # This does NOT duplicate business logic that already lives in
 # actions.py -- every route calls the exact same functions the

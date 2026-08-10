@@ -1,5 +1,5 @@
 # ───────────────────────────────────────────────────────────────────
-# noise_reduction.py — isolate the speaker's voice and normalize it
+# noise_reduction.py, isolate the speaker's voice and normalize it
 # ───────────────────────────────────────────────────────────────────
 # Two real, separate steps chained together, run on every audio/video
 # upload before transcription and storage:

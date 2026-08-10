@@ -1,6 +1,6 @@
 #!/bin/bash
 # ───────────────────────────────────────────────────────────────────
-# update-soliloquy-dns.sh — keeps soliloquy.internal pointed at this
+# update-soliloquy-dns.sh, keeps soliloquy.internal pointed at this
 # Mac's CURRENT LAN IP, since DHCP can (and does) reassign it every
 # few hours/days. Run on a timer (see the LaunchDaemon plist next to
 # this file) so the dnsmasq record self-heals without anyone noticing

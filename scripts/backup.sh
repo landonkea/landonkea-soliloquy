@@ -1,6 +1,6 @@
 #!/bin/bash
 # ───────────────────────────────────────────────────────────────────
-# backup.sh — local backup of Postgres (entries/transcripts) + MinIO
+# backup.sh, local backup of Postgres (entries/transcripts) + MinIO
 # (audio/video files), run on a schedule via
 # ~/Library/LaunchAgents/com.soliloquy.backup.plist (not tracked in
 # the repo -- machine-specific, like the mDNS/dnsmasq LaunchAgents).

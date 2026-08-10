@@ -1,5 +1,5 @@
 # ───────────────────────────────────────────────────────────────────
-# actions.py — the core operations every interface (web, MQTT bridge,
+# actions.py, the core operations every interface (web, MQTT bridge,
 # scheduled analysis) is built on
 # ───────────────────────────────────────────────────────────────────
 # Deliberately separate from any one interface: web/app.py's routes,

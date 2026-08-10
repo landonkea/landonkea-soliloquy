@@ -1,14 +1,14 @@
 # ───────────────────────────────────────────────────────────────────
-# transcriber.py — audio file → text
+# transcriber.py, audio file → text
 # ───────────────────────────────────────────────────────────────────
 # A real provider abstraction, not a single hardcoded implementation
-# — same pattern landonkea-makeItSoNumberOne uses for its AI
+#, same pattern landonkea-makeItSoNumberOne uses for its AI
 # providers (Claude/OpenAI/Ollama), so a cloud Whisper API or a
 # different local engine can be swapped in later without any caller
 # of transcribe() changing.
 #
 # WhisperTranscriber (faster-whisper, local, CPU-friendly) is the
-# default — deliberately, not just for cost: given this app may hold
+# default, deliberately, not just for cost: given this app may hold
 # personal, possibly therapy-adjacent disclosure, audio never leaving
 # the device is a real privacy requirement here, not an optimization.
 # ───────────────────────────────────────────────────────────────────

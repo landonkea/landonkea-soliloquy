@@ -5,6 +5,19 @@
 # switching to managed cloud later (Supabase/Neon, Cloudflare R2) is a
 # connection-string/endpoint change, not a rewrite -- see README's storage
 # section.
+#
+# Port bindings, and why they differ between services: nothing outside
+# this machine ever needs to reach Postgres or MinIO directly -- the web
+# app (bound to 0.0.0.0, reachable from your phone on purpose) is the
+# only client of either, proxying media through its own /media route
+# rather than letting a browser hit MinIO directly. So both are bound to
+# 127.0.0.1 here, closing off the dev credentials in this file from the
+# rest of the LAN, with no change to how anything already works. Mosquitto
+# is the one exception, left on 0.0.0.0 on purpose: makeItSoNumberOne's
+# journal_entry plugin is expected to publish to it from a separate
+# device on the LAN, so localhost-only would break that feature outright.
+# Real auth/TLS on that port (see mosquitto/mosquitto.conf) is still an
+# open item, tracked in CHECKLIST.md.
 services:
   postgres:
     image: postgres:16
@@ -14,8 +27,9 @@ services:
       POSTGRES_DB: soliloquy
     ports:
       # Host port 5433, not 5432 -- avoids colliding with any Postgres
-      # already running natively on this machine.
-      - "5433:5432"
+      # already running natively on this machine. 127.0.0.1-only: see
+      # note above.
+      - "127.0.0.1:5433:5432"
     volumes:
       - soliloquy_postgres_data:/var/lib/postgresql/data
 
@@ -26,14 +40,16 @@ services:
       MINIO_ROOT_USER: soliloquy
       MINIO_ROOT_PASSWORD: soliloquy123
     ports:
-      - "9000:9000"   # S3 API
-      - "9001:9001"   # web console
+      # 127.0.0.1-only: see note above.
+      - "127.0.0.1:9000:9000"   # S3 API
+      - "127.0.0.1:9001:9001"   # web console
     volumes:
       - soliloquy_minio_data:/data
 
   mosquitto:
     image: eclipse-mosquitto:2
     ports:
+      # Deliberately left on 0.0.0.0, not 127.0.0.1: see note above.
       - "1883:1883"
     volumes:
       - ./mosquitto/mosquitto.conf:/mosquitto/config/mosquitto.conf:ro

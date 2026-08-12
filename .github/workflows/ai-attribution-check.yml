@@ -19,7 +19,7 @@ jobs:
       - name: Scan commits for AI attribution
         run: |
           echo "Scanning commits for AI attribution..."
-          
+
           if [ "${{ github.event_name }}" = "pull_request" ]; then
             BASE=${{ github.event.pull_request.base.sha }}
             HEAD=${{ github.event.pull_request.head.sha }}
@@ -27,7 +27,10 @@ jobs:
           else
             COMMITS=$(git log --format="%H" HEAD -5)
           fi
-          
+
+          BLOCKED_NAMES="claude opencode chatgpt gpt gemini mimo llama copilot deepseek mistral perplexity cursor windsurf aider cline continue tabnine codeium cody phind bard ollama vllm lmstudio localai jan openchat anthropic"
+          BLOCKED_EMAILS="noreply@anthropic noreply@opencode noreply@openai noreply@google noreply@microsoft noreply@meta noreply@deepseek noreply@mistral noreply@sourcegraph"
+
           FOUND=0
           for SHA in $COMMITS; do
             MSG=$(git log -1 --format="%B" "$SHA")
@@ -35,40 +38,71 @@ jobs:
             AUTHOR_EMAIL=$(git log -1 --format="%ae" "$SHA")
             COMMITTER_NAME=$(git log -1 --format="%cn" "$SHA")
             COMMITTER_EMAIL=$(git log -1 --format="%ce" "$SHA")
-            
-            BLOCKED="claude opencode anthropic"
-            
-            for keyword in $BLOCKED; do
-              if echo "$MSG $AUTHOR_NAME $AUTHOR_EMAIL $COMMITTER_NAME $COMMITTER_EMAIL" | grep -qi "$keyword"; then
-                echo ""
-                echo "❌ AI attribution found in commit $SHA:"
-                echo "   Author: $AUTHOR_NAME <$AUTHOR_EMAIL>"
-                echo "   Committer: $COMMITTER_NAME <$COMMITTER_EMAIL>"
-                echo "   Message preview: $(echo "$MSG" | head -3)"
-                FOUND=1
+
+            HIT=""
+
+            for keyword in $BLOCKED_NAMES $BLOCKED_EMAILS; do
+              if echo "$AUTHOR_NAME $AUTHOR_EMAIL $COMMITTER_NAME $COMMITTER_EMAIL" | grep -qi "$keyword"; then
+                HIT="$keyword"
               fi
             done
+
+            for keyword in $BLOCKED_NAMES; do
+              if echo "$MSG" | grep -qiE "(Co-Authored-By|Generated with|Generated-by).*$keyword"; then
+                HIT="$keyword"
+              fi
+            done
+            for email in $BLOCKED_EMAILS; do
+              if echo "$MSG" | grep -qi "$email"; then
+                HIT="$email"
+              fi
+            done
+
+            if [ -n "$HIT" ]; then
+              echo ""
+              echo "❌ AI attribution found in commit $SHA (matched '$HIT'):"
+              echo "   Author: $AUTHOR_NAME <$AUTHOR_EMAIL>"
+              echo "   Committer: $COMMITTER_NAME <$COMMITTER_EMAIL>"
+              echo "   Message preview: $(echo "$MSG" | head -3)"
+              FOUND=1
+            fi
           done
-          
+
           if [ "$FOUND" -eq 1 ]; then
             echo ""
             echo "❌ Commits contain AI author/committer or attribution."
             echo "   Remove all AI references before merging."
             exit 1
           fi
-          
+
           echo "✓ No AI attribution found"
 
       - name: Scan files for embedded attribution
         run: |
           echo "Scanning files for embedded AI attribution..."
-          MATCHES=$(grep -r -i -l "Co-Authored-By\|Generated with Claude\|Generated with opencode\|noreply@anthropic\|noreply@opencode" --include="*.md" --include="*.txt" --include="*.yml" --include="*.yaml" --include="*.json" --include="*.js" --include="*.ts" --include="*.py" --include="*.rb" --include="*.go" --include="*.java" --include="*.sh" . 2>/dev/null || true)
-          
+
+          BLOCKED_TOOLS="Claude|opencode|ChatGPT|GPT|Gemini|MiMo|Llama|Copilot|DeepSeek|Mistral|Perplexity|Cursor|Windsurf|Aider|Cline|Continue|Tabnine|Codeium|Cody|Phind|Bard"
+          PATTERN="(Co-Authored-By:.*(${BLOCKED_TOOLS})|Generated with.*(${BLOCKED_TOOLS})|Generated-by:.*(${BLOCKED_TOOLS})|noreply@anthropic|noreply@opencode|noreply@openai|noreply@google|noreply@microsoft|noreply@meta|noreply@deepseek|noreply@mistral|noreply@sourcegraph)"
+
+          MATCHES=$(grep -r -i -l -E "$PATTERN" \
+            --exclude-dir=.git \
+            --exclude-dir=node_modules \
+            --exclude-dir=.venv --exclude-dir=venv \
+            --exclude-dir=.build --exclude-dir=.swiftpm \
+            --exclude-dir=dist --exclude-dir=build \
+            --exclude-dir=vendor --exclude-dir=Pods \
+            --exclude-dir=DerivedData \
+            --exclude-dir=.gradle --exclude-dir=.idea \
+            --exclude-dir=.ruff_cache --exclude-dir=__pycache__ \
+            --exclude-dir=pr-backup \
+            --exclude="ai-attribution-check.yml" \
+            . 2>/dev/null || true)
+
           if [ -n "$MATCHES" ]; then
             echo ""
             echo "❌ Files containing AI attribution references:"
             echo "$MATCHES"
             exit 1
           fi
-          
+
           echo "✓ No embedded AI attribution found in files"

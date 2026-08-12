@@ -64,7 +64,8 @@ and the unrelated CRM/CMS + PWA project.
 - [ ] **Not yet tested from an actual phone**, desktop browser only so far. Worth doing next:
       open the site from a phone on the same network/tailnet and try the camera-capture upload for
       real (video upload has only been verified with a synthesized test clip + `curl` so far, not
-      a real phone recording through the actual page)
+      a real phone recording through the actual page) (blocked on the user: needs a real phone in
+      hand, nothing left to code here)
 
 ## Extra: report export formats ✅ done
 
@@ -369,20 +370,37 @@ and the unrelated CRM/CMS + PWA project.
 
 - [ ] Test the video-capture flow from a real phone (not just desktop browser + synthesized test
       video), this is the one part of the original ask ("record with the phone's camera app,
-      then hand the file to Soliloquy") not yet verified on an actual phone
+      then hand the file to Soliloquy") not yet verified on an actual phone (blocked on the user:
+      needs a real phone in hand, nothing left to code here)
 - [ ] Record a real journal entry with your actual voice to hear how DeepFilterNet + normalization
       actually sounds, everything so far has been verified with synthesized TTS audio, not a real
-      human recording
+      human recording (blocked on the user: needs your actual voice, nothing left to code here)
 - [ ] Set a real `ANTHROPIC_API_KEY`/`OPENROUTER_API_KEY`/`GEMINI_API_KEY` to verify the
       Report/Analysis happy path end-to-end (currently only the error path is verified here)
-- [ ] Decide on and implement real LAN/cloud security hardening (see above), `deployment_mode.py`
-      only describes the situation today, it doesn't yet change any actual behavior
+      (blocked on the user: needs a real key in `.env`, nothing left to code here)
+- [x] Decide on and implement real LAN/cloud security hardening (see above), `deployment_mode.py`
+      only describes the situation today, it doesn't yet change any actual behavior. **Partially
+      implemented**: `docker-compose.yml` now binds Postgres (5433) and MinIO (9000/9001) to
+      `127.0.0.1` instead of `0.0.0.0`, closing the dev-credential exposure on those two, verified
+      live (`docker compose up -d`, confirmed via `docker port` that both now show
+      `127.0.0.1:...->...` while still reachable from the web app on localhost, then `docker
+      compose down`) and against the full test suite (153 passed). Mosquitto is deliberately left
+      on `0.0.0.0`: makeItSoNumberOne's `journal_entry` plugin is meant to publish to it from a
+      separate device on the LAN, so locking it to localhost would break that feature outright,
+      whether that's the actual setup is a call only you can make. Real auth/TLS on Mosquitto (see
+      `mosquitto/mosquitto.conf`), and whether to also add real (non-dev) Postgres/MinIO
+      credentials, remain open, both need you to pick actual values, not more code (blocked on the
+      user for the rest)
 
 ## After that (not started, no immediate plan)
 
 - [ ] Move from self-hosted Postgres/MinIO to managed cloud (Supabase/Neon + Cloudflare R2) once
       the self-hosted version has been used for real for a while, same interfaces, config change
+      (blocked on the user: needs real usage first, then a provider choice and real credentials,
+      not more code right now)
 - [ ] Face/expression analysis of stored video (a genuinely new analyzer, not a re-use of the
-      transcript pipeline)
+      transcript pipeline) (blocked on the user: a new feature needing product scoping before any
+      code, not started)
 - [ ] Native mobile app(s), once the web app has proven the product is worth the extra platform
+      (blocked on the user: a product decision on whether to build this at all, not started)
       work, would be a new client of the same backend API, not a rewrite

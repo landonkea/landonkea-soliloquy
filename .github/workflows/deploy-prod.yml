@@ -1,0 +1,45 @@
+name: Deploy (prod)
+
+# Triggered by a version tag (v1.2.3), not every push to main, unlike
+# dev/staging this one shouldn't fire on every merge. Cutting a prod
+# release should be a deliberate act, same reasoning as ANALYZER_PROVIDER
+# defaulting to the free tier instead of Claude: nothing expensive or
+# hard to undo should happen just because a commit landed. Builds and
+# publishes the "prod" Dockerfile target to GHCR; doesn't touch a live
+# host, there isn't one yet (see .env.prod's header, CHECKLIST.md's
+# "not started yet" section).
+
+on:
+  push:
+    tags:
+      - "v*"
+
+jobs:
+  test:
+    uses: ./.github/workflows/ci.yml
+
+  build:
+    needs: test
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push prod image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          target: prod
+          push: true
+          tags: |
+            ghcr.io/landonkea/landonkea-soliloquy:prod
+            ghcr.io/landonkea/landonkea-soliloquy:${{ github.ref_name }}

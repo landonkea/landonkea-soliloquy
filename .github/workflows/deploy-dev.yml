@@ -1,0 +1,42 @@
+name: Deploy (dev)
+
+# Runs the ci.yml test job as a gate (via workflow_call, so this isn't a
+# second copy of it), then builds the Dockerfile's "dev" target and
+# publishes it to GHCR. That's as far as this goes: there's no dev host
+# to hand the image to yet, so "deploy" here means "build it, test it,
+# leave it in the registry ready to pull," not "SSH somewhere and run
+# it." Wiring an actual host is a CHECKLIST.md item, not a code problem.
+
+on:
+  push:
+    branches: [dev]
+
+jobs:
+  test:
+    uses: ./.github/workflows/ci.yml
+
+  build:
+    needs: test
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push dev image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          target: dev
+          push: true
+          tags: |
+            ghcr.io/landonkea/landonkea-soliloquy:dev
+            ghcr.io/landonkea/landonkea-soliloquy:dev-${{ github.sha }}

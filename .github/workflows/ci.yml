@@ -5,6 +5,10 @@ on:
     branches: [main]
   pull_request:
     branches: [main]
+  # Lets the dev/staging/prod pipeline workflows (see deploy-*.yml) run
+  # this exact same test job as their gate, instead of maintaining a
+  # second copy of it that could quietly drift out of sync.
+  workflow_call:
 
 jobs:
   test:

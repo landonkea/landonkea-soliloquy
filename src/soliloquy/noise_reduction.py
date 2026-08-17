@@ -57,7 +57,12 @@ def _get_model():
     global _model, _df_state
     if _model is None:
         _stub_torchaudio_backend()
-        from df.enhance import init_df
+        try:
+            from df.enhance import init_df
+        except ImportError as exc:
+            raise RuntimeError(
+                "deepfilternet not installed. Install with: pip install -e \".[transcribe]\""
+            ) from exc
 
         _model, _df_state, _ = init_df()
     return _model, _df_state
@@ -70,8 +75,23 @@ def preload() -> None:
     the first time there (it reliably segfaults on import if that's
     the first touch of torch in the process) -- so app.py's startup
     calls this on the main thread before any request can reach a
-    worker thread first. See app.py's _lifespan."""
-    _get_model()
+    worker thread first. See app.py's _lifespan.
+
+    The `transcribe` extra (deepfilternet/torch/torchaudio) is optional
+    -- see pyproject.toml, only `web` is required to run the app at
+    all -- so a missing dependency here must not stop the app from
+    starting. Same "clear error only when actually used" contract as
+    WhisperTranscriber._get_model() and ffmpeg_utils.extract_audio():
+    isolate_voice_and_normalize() below still calls _get_model() itself
+    and lets that RuntimeError surface normally to whoever tried to
+    process real audio without the extra installed. Confirmed this was
+    the actual, live cause of every tests/test_web.py failure in CI
+    (all 34 of them, unrelated to audio at all, since preload() ran
+    unconditionally in the app's startup lifespan before this fix)."""
+    try:
+        _get_model()
+    except RuntimeError as exc:
+        print(f"[noise_reduction] Skipping preload: {exc}", flush=True)
 
 
 def isolate_voice_and_normalize(input_path: str, output_path: str) -> None:

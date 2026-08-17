@@ -63,7 +63,16 @@ jobs:
           done
 
       - name: Install dependencies
-        run: pip install -e ".[dev,web]"
+        # `transcribe` (deepfilternet/torch/torchaudio/soundfile) is
+        # required, not optional here: tests/test_web.py's real-audio
+        # upload tests (test_post_audio_entry_transcribes_and_stores_a_
+        # real_audio_key etc.) deliberately exercise the real
+        # noise-isolation pipeline for real -- their own comment says
+        # so, only faster-whisper is faked, "because it needs a real
+        # model download," everything else runs for real. Without this,
+        # those tests fail with ModuleNotFoundError: No module named
+        # 'soundfile', confirmed directly before this fix.
+        run: pip install -e ".[dev,web,transcribe]"
 
       - name: Run tests
         run: pytest -v

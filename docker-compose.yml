@@ -1,10 +1,20 @@
-# Local self-hosted dev environment: Postgres (entries/metadata) + MinIO
-# (S3-compatible object storage for audio/video files) + Mosquitto (MQTT
-# broker, for the voice-triggered journal-entry bridge -- see
-# mqtt_bridge.py). Postgres/MinIO speak standard protocols specifically so
-# switching to managed cloud later (Supabase/Neon, Cloudflare R2) is a
-# connection-string/endpoint change, not a rewrite -- see README's storage
-# section.
+# Everything Soliloquy needs, in one file: Postgres (entries/metadata),
+# MinIO (S3-compatible object storage for audio/video), Mosquitto (MQTT
+# broker for the voice-triggered journal-entry bridge, see
+# mqtt_bridge.py), and the app itself. `docker compose up -d --build`
+# with a `.env` in place (`cp .env.example .env` first) is the whole
+# setup -- no host Python, no Homebrew ffmpeg, no Rust toolchain, all of
+# that now lives inside the image (see Dockerfile). `start.command`'s
+# host-Python flow still works and is still faster for active
+# development (no image rebuild for a code change, since uvicorn's
+# --reload plus a live venv beats even the bind-mounted container
+# restart loop), but it's no longer the only path, or the one a fresh
+# clone needs to work through first.
+#
+# Postgres/MinIO speak standard protocols specifically so switching to
+# managed cloud later (Supabase/Neon, Cloudflare R2) is a
+# connection-string/endpoint change, not a rewrite -- see README's
+# storage section.
 #
 # Port bindings, and why they differ between services: nothing outside
 # this machine ever needs to reach Postgres or MinIO directly -- the web
@@ -54,6 +64,37 @@ services:
     volumes:
       - ./mosquitto/mosquitto.conf:/mosquitto/config/mosquitto.conf:ro
       - soliloquy_mosquitto_data:/mosquitto/data
+
+  app:
+    build:
+      context: .
+      target: dev
+    ports:
+      - "127.0.0.1:8000:8000"
+    env_file:
+      # Copy .env.example to .env first -- this is the same file
+      # `python -m soliloquy.web` reads when run on the host, see
+      # README's Quick start.
+      - .env
+    environment:
+      # .env's DATABASE_URL/S3_ENDPOINT_URL/MQTT_HOST point at
+      # localhost, correct for the app running directly on the host,
+      # but "localhost" from inside this container means the
+      # container itself. Compose gives every service in a project a
+      # DNS name matching its service name, so these three point at
+      # the containers next to this one instead, overriding whatever
+      # .env says (Compose's `environment:` wins over `env_file:`).
+      DATABASE_URL: postgresql://soliloquy:soliloquy@postgres:5432/soliloquy
+      S3_ENDPOINT_URL: http://minio:9000
+      MQTT_HOST: mosquitto
+    depends_on:
+      - postgres
+      - minio
+      - mosquitto
+    volumes:
+      # Bind-mount source over the image's copy so `--reload` (the dev
+      # target's CMD) picks up host edits without a rebuild.
+      - ./src:/app/src
 
 volumes:
   soliloquy_postgres_data:

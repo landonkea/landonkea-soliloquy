@@ -35,9 +35,15 @@ if ! command -v ffmpeg > /dev/null 2>&1; then
     fi
 fi
 
-# 3. Postgres + MinIO + Mosquitto.
+# 3. Postgres + MinIO + Mosquitto -- named explicitly, NOT a bare
+# `docker compose up -d`, since docker-compose.yml also has a fourth
+# service now (`app`, the containerized version of what this script
+# runs on the host in step 6 below). A bare `up -d` would try to
+# build and start that too, competing for port 8000 with this
+# script's own `python -m soliloquy.web`, and would fail outright for
+# anyone who hasn't created a `.env` yet (the app service's env_file).
 echo "Starting Postgres, MinIO, and the MQTT broker..."
-docker compose up -d
+docker compose up -d postgres minio mosquitto
 
 # 4. Python virtual environment + dependencies.
 if [ ! -d ".venv" ]; then

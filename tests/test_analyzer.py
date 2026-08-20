@@ -83,6 +83,63 @@ def test_analyze_parses_a_well_formed_response_into_an_analysisresult():
     assert kwargs["headers"]["x-api-key"] == "fake-key"
     assert kwargs["json"]["model"]
     assert "Today was a good day at work." in kwargs["json"]["messages"][0]["content"]
+
+
+def test_analyze_parses_a_mood_score_when_present():
+    analyzer = ClaudeAnalyzer(api_key="fake-key")
+    fake_response = _mock_claude_response({
+        "summary": "s", "mood_notes": "m", "key_topics": [], "mood_score": 7,
+    })
+
+    with patch("requests.post", return_value=fake_response):
+        result = analyzer.analyze(_make_entries())
+
+    assert result.mood_score == 7
+
+
+def test_analyze_leaves_mood_score_none_when_absent():
+    analyzer = ClaudeAnalyzer(api_key="fake-key")
+    fake_response = _mock_claude_response({"summary": "s", "mood_notes": "m", "key_topics": []})
+
+    with patch("requests.post", return_value=fake_response):
+        result = analyzer.analyze(_make_entries())
+
+    assert result.mood_score is None
+
+
+def test_analyze_clamps_an_out_of_range_mood_score():
+    analyzer = ClaudeAnalyzer(api_key="fake-key")
+    fake_response = _mock_claude_response({
+        "summary": "s", "mood_notes": "m", "key_topics": [], "mood_score": 47,
+    })
+
+    with patch("requests.post", return_value=fake_response):
+        result = analyzer.analyze(_make_entries())
+
+    assert result.mood_score == 10
+
+
+def test_analyze_ignores_an_unparseable_mood_score():
+    analyzer = ClaudeAnalyzer(api_key="fake-key")
+    fake_response = _mock_claude_response({
+        "summary": "s", "mood_notes": "m", "key_topics": [], "mood_score": "not a number",
+    })
+
+    with patch("requests.post", return_value=fake_response):
+        result = analyzer.analyze(_make_entries())
+
+    assert result.mood_score is None
+
+
+def test_analyze_passes_the_instruction_into_the_prompt():
+    analyzer = ClaudeAnalyzer(api_key="fake-key")
+    fake_response = _mock_claude_response({"summary": "s", "mood_notes": "m", "key_topics": []})
+
+    with patch("requests.post", return_value=fake_response) as mock_post:
+        analyzer.analyze(_make_entries(), instruction="focus on relationship patterns")
+
+    _, kwargs = mock_post.call_args
+    assert "focus on relationship patterns" in kwargs["json"]["messages"][0]["content"]
     assert "Feeling a bit tired but okay." in kwargs["json"]["messages"][0]["content"]
 
 
@@ -240,7 +297,7 @@ class _StubAnalyzer:
         self.error = error
         self.called = False
 
-    def analyze(self, entries):
+    def analyze(self, entries, instruction=""):
         self.called = True
         if self.error:
             raise self.error

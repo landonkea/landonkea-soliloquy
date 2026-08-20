@@ -1,0 +1,23 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Shared report — Soliloquy</title>
+  <meta name="theme-color" content="#e08a4b">
+  <link rel="icon" href="/static/favicon.ico" sizes="any">
+  <link rel="icon" href="/static/icon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+  <header>
+    <div class="header-main">
+      <span class="brand-name">Soliloquy — shared report</span>
+    </div>
+  </header>
+  <p style="color: var(--text-muted); font-size: 0.85rem;">
+    Shared via a time-limited link — last {{ report.days }} days, audience: {{ report.audience }}.
+  </p>
+  <pre class="report">{{ report.content }}</pre>
+</body>
+</html>

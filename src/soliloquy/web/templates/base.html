@@ -4,240 +4,29 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>{% block title %}Soliloquy{% endblock %}</title>
-  <style>
-    :root {
-      /* Light, diffused orange (primary) + its true color-wheel
-         complement, a muted slate blue (secondary) -- the blue is
-         used sparingly (secondary buttons, links, a few accents)
-         rather than 50/50, so the orange stays the dominant note. */
-      --bg: #fdf6ef;
-      --surface: #ffffff;
-      --border: #f0dfc9;
-      --text: #3a2e22;
-      --text-muted: #9c8a72;
-      --accent: #e08a4b;
-      --accent-hover: #c97230;
-      --accent-soft: #fbe8d4;
-      --accent-soft-border: #f0cba0;
-      --complement: #4e7c93;
-      --complement-hover: #3c6478;
-      --complement-soft: #e3eef2;
-      --complement-soft-border: #bcd6e0;
-      --ok: #3f7d4f;
-      --error: #b0483a;
-      --radius: 14px;
-      --shadow: 0 1px 2px rgba(46, 42, 36, 0.04), 0 4px 16px rgba(46, 42, 36, 0.06);
-    }
-
-    * { box-sizing: border-box; }
-
-    body {
-      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
-      background: var(--bg);
-      color: var(--text);
-      max-width: 720px;
-      margin: 0 auto;
-      padding: 1.5rem 1.25rem 4rem;
-      line-height: 1.55;
-      font-size: 16px;
-    }
-
-    h1 {
-      font-size: 1.6rem;
-      font-weight: 700;
-      letter-spacing: -0.01em;
-      margin: 0.25rem 0 1.25rem;
-    }
-
-    header {
-      margin-bottom: 1.5rem;
-      padding-bottom: 1rem;
-      border-bottom: 1px solid var(--border);
-    }
-
-    .brand-name {
-      display: block;
-      font-size: 1.35rem;
-      font-weight: 700;
-      color: var(--text);
-      text-decoration: none;
-      letter-spacing: -0.01em;
-      margin-bottom: 0.6rem;
-    }
-
-    nav { display: flex; gap: 1.25rem; }
-    nav a {
-      text-decoration: none;
-      color: var(--text-muted);
-      font-weight: 600;
-      font-size: 0.92rem;
-      padding: 0.3rem 0;
-      border-bottom: 2px solid transparent;
-      transition: color 0.15s ease, border-color 0.15s ease;
-    }
-    nav a:hover { color: var(--accent); }
-    nav a.active { color: var(--accent); border-bottom-color: var(--accent); }
-
-    .entry, fieldset, .card {
-      background: var(--surface);
-      border: 1px solid var(--border);
-      border-radius: var(--radius);
-      box-shadow: var(--shadow);
-      padding: 1.25rem;
-      margin-bottom: 1.25rem;
-    }
-
-    fieldset { padding-top: 0.5rem; }
-    legend {
-      font-weight: 700;
-      font-size: 0.95rem;
-      padding: 0 0.4rem;
-      color: var(--text);
-    }
-
-    .entry-meta { color: var(--text-muted); font-size: 0.82rem; margin-bottom: 0.6rem; }
-    .entry p { margin: 0 0 0.75rem; }
-    .entry audio, .entry video {
-      max-width: 100%;
-      display: block;
-      border-radius: 10px;
-    }
-    .media-with-volume { margin: 0.6rem 0; }
-    .volume-control {
-      display: flex;
-      align-items: center;
-      gap: 0.5rem;
-      font-size: 0.8rem;
-      color: var(--text-muted);
-      margin-top: 0.4rem;
-      font-weight: 600;
-    }
-    .volume-control input[type=range] { width: 140px; margin: 0; accent-color: var(--complement); }
-
-    .transcript-edit { min-height: 4rem; }
-
-    .share-flags {
-      display: flex;
-      flex-direction: column;
-      align-items: flex-start;
-      gap: 0.5rem;
-      margin-top: 0.75rem;
-    }
-    .share-flags label {
-      display: flex;
-      align-items: center;
-      gap: 0.5rem;
-      font-size: 0.9rem;
-      cursor: pointer;
-    }
-    .share-flags input[type="checkbox"] { width: 1.05rem; height: 1.05rem; accent-color: var(--accent); }
-
-    label { font-weight: 600; font-size: 0.9rem; display: block; margin-bottom: 1rem; }
-
-    textarea, input[type=text], input[type=number], input[type=file], select {
-      width: 100%;
-      box-sizing: border-box;
-      padding: 0.6rem 0.7rem;
-      margin-top: 0.35rem;
-      border: 1px solid var(--border);
-      border-radius: 8px;
-      background: var(--bg);
-      font-size: 0.95rem;
-      font-family: inherit;
-      color: var(--text);
-    }
-    textarea:focus, input:focus, select:focus {
-      outline: none;
-      border-color: var(--accent);
-      background: var(--surface);
-    }
-
-    button, .btn {
-      padding: 0.6rem 1.1rem;
-      cursor: pointer;
-      border: none;
-      border-radius: 8px;
-      background: var(--accent);
-      color: white;
-      font-weight: 600;
-      font-size: 0.9rem;
-      font-family: inherit;
-      transition: background 0.15s ease;
-    }
-    button:hover, .btn:hover { background: var(--accent-hover); }
-    button.secondary, .btn.secondary {
-      background: var(--complement-soft);
-      color: var(--complement-hover);
-      border: 1px solid var(--complement-soft-border);
-    }
-    button.secondary:hover, .btn.secondary:hover { background: var(--complement-soft-border); border-color: var(--complement); }
-
-    .status { margin-top: 0.6rem; font-size: 0.87rem; font-weight: 600; }
-    .status.ok { color: var(--ok); }
-    .status.error { color: var(--error); }
-
-    pre.report {
-      white-space: pre-wrap;
-      background: var(--surface);
-      border: 1px solid var(--border);
-      padding: 1.1rem;
-      border-radius: var(--radius);
-    }
-
-    .prompt-box {
-      background: var(--accent-soft);
-      border: 1px solid var(--accent-soft-border);
-      border-radius: var(--radius);
-      padding: 1.1rem 1.25rem;
-      margin-bottom: 1.5rem;
-    }
-    .prompt-label {
-      font-size: 0.72rem;
-      font-weight: 700;
-      text-transform: uppercase;
-      letter-spacing: 0.06em;
-      color: var(--accent-hover);
-      margin-bottom: 0.3rem;
-    }
-    .prompt-text { font-size: 1.1rem; font-style: italic; color: var(--text); }
-
-    .tip-box {
-      background: var(--complement-soft);
-      border: 1px solid var(--complement-soft-border);
-      border-radius: var(--radius);
-      padding: 0.9rem 1.1rem;
-      margin-bottom: 1.5rem;
-      font-size: 0.92rem;
-      color: var(--text);
-    }
-    .tip-label {
-      font-size: 0.7rem;
-      font-weight: 700;
-      text-transform: uppercase;
-      letter-spacing: 0.06em;
-      color: var(--complement-hover);
-      margin-bottom: 0.25rem;
-    }
-
-    .capture-choice { display: flex; gap: 0.6rem; margin-top: 0.5rem; }
-    .capture-choice > div { flex: 1; }
-    .capture-choice label { font-size: 0.78rem; color: var(--text-muted); margin-bottom: 0.35rem; }
-    .capture-choice input[type=file] { display: none; }
-    .capture-choice button { width: 100%; }
-
-    .empty-state { color: var(--text-muted); }
-    .empty-state a { color: var(--accent); }
-  </style>
+  <meta name="theme-color" content="#e08a4b">
+  <link rel="manifest" href="/static/manifest.json">
+  <link rel="icon" href="/static/favicon.ico" sizes="any">
+  <link rel="icon" href="/static/icon.svg" type="image/svg+xml">
+  <link rel="apple-touch-icon" href="/static/apple-touch-icon.png">
+  <link rel="stylesheet" href="/static/style.css">
 </head>
 <body>
   <header>
-    <a href="/" class="brand-name">Soliloquy</a>
-    <nav>
-      <a href="/">Entries</a>
-      <a href="/new">New entry</a>
-      <a href="/report">Report</a>
-      <a href="/analysis">Analysis</a>
-    </nav>
+    <div class="header-main">
+      <a href="/" class="brand-name">Soliloquy</a>
+      <nav>
+        <a href="/">Entries</a>
+        <a href="/new">New entry</a>
+        <a href="/report">Report</a>
+        <a href="/analysis">Analysis</a>
+      </nav>
+    </div>
+    {% if request.session.get("authenticated") %}
+    <form class="logout-form" action="/logout" method="post">
+      <button type="submit">Log out</button>
+    </form>
+    {% endif %}
   </header>
   {% block content %}{% endblock %}
 </body>

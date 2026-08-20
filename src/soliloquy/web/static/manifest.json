@@ -1,0 +1,14 @@
+{
+  "name": "Soliloquy",
+  "short_name": "Soliloquy",
+  "description": "A voice-first journal: record a thought out loud, get it transcribed and analyzed.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#fdf6ef",
+  "theme_color": "#e08a4b",
+  "icons": [
+    { "src": "/static/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "/static/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "/static/icon.svg", "sizes": "any", "type": "image/svg+xml" }
+  ]
+}

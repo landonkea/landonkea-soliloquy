@@ -15,9 +15,11 @@ from unittest.mock import MagicMock, patch
 import pytest
 from fastapi.testclient import TestClient
 
-from soliloquy.analysis_store import AnalysisSnapshotStore
+from soliloquy.analysis_store import AnalysisSnapshot, AnalysisSnapshotStore
+from soliloquy.analyzer import AnalysisResult
+from soliloquy.report_store import SavedReportStore
 from soliloquy.storage import EntryStore
-from soliloquy.web.app import app, get_analysis_store, get_store
+from soliloquy.web.app import app, get_analysis_store, get_saved_report_store, get_store
 
 TEST_DATABASE_URL = os.environ.get(
     "TEST_DATABASE_URL", "postgresql://soliloquy:soliloquy@localhost:5433/soliloquy_test"
@@ -40,8 +42,17 @@ def _override_get_analysis_store():
         store.close()
 
 
+def _override_get_saved_report_store():
+    store = SavedReportStore(TEST_DATABASE_URL)
+    try:
+        yield store
+    finally:
+        store.close()
+
+
 app.dependency_overrides[get_store] = _override_get_store
 app.dependency_overrides[get_analysis_store] = _override_get_analysis_store
+app.dependency_overrides[get_saved_report_store] = _override_get_saved_report_store
 
 
 @pytest.fixture(autouse=True)
@@ -50,6 +61,8 @@ def _clean_db():
         store._conn.execute("TRUNCATE TABLE entries")
     with AnalysisSnapshotStore(TEST_DATABASE_URL) as store:
         store._conn.execute("TRUNCATE TABLE analysis_snapshots")
+    with SavedReportStore(TEST_DATABASE_URL) as store:
+        store._conn.execute("TRUNCATE TABLE saved_reports")
     yield
 
 
@@ -297,7 +310,7 @@ def test_post_video_entry_stores_video_and_audio_and_transcribes(client, tmp_pat
     body = response.json()
     assert body["video_path"].startswith("video/")
     assert body["audio_path"].startswith("audio/")
-    assert body["transcript"] == "transcribed from video"
+    assert body["transcript"] == "Transcribed from video."
 
     # Both files really made it to object storage.
     assert client.get(f"/media/{body['video_path']}").status_code == 200
@@ -331,7 +344,7 @@ def test_post_audio_entry_accepts_a_real_m4a_file(client, tmp_path):
     assert response.status_code == 200
     body = response.json()
     assert body["audio_path"].endswith(".wav")
-    assert body["transcript"] == "from an m4a file"
+    assert body["transcript"] == "From an m4a file."
 
     media_response = client.get(f"/media/{body['audio_path']}")
     assert media_response.status_code == 200
@@ -354,7 +367,7 @@ def test_post_video_entry_accepts_a_real_mkv_file(client, tmp_path):
     assert response.status_code == 200
     body = response.json()
     assert body["video_path"].endswith(".mkv")
-    assert body["transcript"] == "from an mkv file"
+    assert body["transcript"] == "From an mkv file."
 
     media_response = client.get(f"/media/{body['video_path']}")
     assert media_response.status_code == 200
@@ -478,3 +491,150 @@ def test_analysis_page_shows_saved_snapshots(client):
 
     assert response.status_code == 200
     assert "a scheduled summary" in response.text
+
+
+# ── Search ────────────────────────────────────────────────────────────
+
+def test_entries_page_search_finds_matching_entries(client):
+    client.post("/entries", data={"text": "I talked to my sister about the move"})
+    client.post("/entries", data={"text": "nothing much happened today"})
+
+    response = client.get("/", params={"q": "sister"})
+
+    assert "I talked to my sister" in response.text
+    assert "nothing much happened" not in response.text
+
+
+def test_entries_page_search_shows_no_matches_message(client):
+    client.post("/entries", data={"text": "an entry"})
+
+    response = client.get("/", params={"q": "nonexistentword"})
+
+    assert "No matching entries" in response.text
+
+
+# ── Tags ─────────────────────────────────────────────────────────────
+
+def test_update_tags_sets_the_tag_list(client):
+    created = client.post("/entries", data={"text": "an entry"}).json()
+
+    response = client.post(f"/entries/{created['id']}/tags", data={"tags": "work, family"})
+
+    assert response.status_code == 200
+    assert response.json()["tags"] == ["work", "family"]
+
+
+def test_update_tags_returns_404_for_an_unknown_id(client):
+    response = client.post("/entries/does-not-exist/tags", data={"tags": "work"})
+    assert response.status_code == 404
+
+
+def test_entries_page_can_filter_by_tag(client):
+    tagged = client.post("/entries", data={"text": "about work"}).json()
+    client.post(f"/entries/{tagged['id']}/tags", data={"tags": "work"})
+    client.post("/entries", data={"text": "about family"})
+
+    response = client.get("/", params={"tag": "work"})
+
+    assert "about work" in response.text
+    assert "about family" not in response.text
+
+
+# ── Streak ───────────────────────────────────────────────────────────
+
+def test_entries_page_shows_the_streak_line(client):
+    client.post("/entries", data={"text": "an entry"})
+
+    response = client.get("/")
+
+    assert "Journaled 1 of the last 7 days" in response.text
+
+
+# ── Saved reports + share links ──────────────────────────────────────
+
+def test_save_report_creates_a_saved_report(client, monkeypatch):
+    monkeypatch.setenv("ANALYZER_PROVIDER", "claude")
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "fake-key-not-used")
+    client.post("/entries", data={"text": "an entry to save"})
+
+    with patch("requests.post", return_value=_fake_claude_response()):
+        response = client.post("/reports/save", data={"days": 30, "audience": "self"})
+
+    assert response.status_code == 200
+    report_id = response.json()["id"]
+
+    saved_page = client.get("/reports/saved")
+    assert report_id in saved_page.text or "last 30 days" in saved_page.text
+
+
+def test_save_report_returns_404_when_nothing_matches(client):
+    response = client.post("/reports/save", data={"days": 7, "audience": "partner"})
+    assert response.status_code == 404
+
+
+def test_share_link_resolves_to_the_report_content(client, monkeypatch):
+    monkeypatch.setenv("SESSION_SECRET_KEY", "test-session-secret")
+    monkeypatch.setenv("ANALYZER_PROVIDER", "claude")
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "fake-key-not-used")
+    client.post("/entries", data={"text": "an entry to share"})
+
+    with patch("requests.post", return_value=_fake_claude_response()):
+        saved = client.post("/reports/save", data={"days": 30, "audience": "self"}).json()
+
+    link_response = client.post(f"/reports/saved/{saved['id']}/share-link", data={"expires_in_days": 7})
+    assert link_response.status_code == 200
+    share_url = link_response.json()["url"]
+
+    shared_response = client.get(share_url)
+    assert shared_response.status_code == 200
+    assert "s" in shared_response.text  # the fake summary text from _fake_claude_response
+
+
+def test_share_link_route_is_reachable_with_no_auth_session(client, monkeypatch):
+    # Regression check for auth.py's _EXEMPT_PREFIXES -- a share link
+    # is meant for someone with no login here at all. Setup (creating
+    # the entry and saving/sharing the report) happens AS the logged-in
+    # owner, since those routes are (correctly) still behind the gate;
+    # only the final GET is checked unauthenticated.
+    monkeypatch.setenv("AUTH_PASSWORD", "some-password")
+    monkeypatch.setenv("SESSION_SECRET_KEY", "test-session-secret")
+    monkeypatch.setenv("ANALYZER_PROVIDER", "claude")
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "fake-key-not-used")
+    client.post("/login", data={"password": "some-password", "next": "/"})
+    client.post("/entries", data={"text": "an entry to share"})
+
+    with patch("requests.post", return_value=_fake_claude_response()):
+        saved = client.post("/reports/save", data={"days": 30, "audience": "self"}).json()
+    share_url = client.post(f"/reports/saved/{saved['id']}/share-link", data={"expires_in_days": 7}).json()["url"]
+
+    client.cookies.clear()  # simulate a visitor with no session at all
+    response = client.get(share_url, follow_redirects=False)
+    assert response.status_code == 200  # not a 303 redirect to /login
+
+
+def test_share_link_returns_404_for_a_bogus_token(client, monkeypatch):
+    monkeypatch.setenv("SESSION_SECRET_KEY", "test-session-secret")
+    response = client.get("/reports/shared/not-a-real-token")
+    assert response.status_code == 404
+
+
+# ── Mood trend chart ──────────────────────────────────────────────────
+
+def test_analysis_page_shows_the_mood_chart_with_enough_scored_snapshots():
+    with AnalysisSnapshotStore(TEST_DATABASE_URL) as store:
+        for score in (4, 8):
+            store.add(AnalysisSnapshot(
+                days=1, audience="self",
+                result=AnalysisResult(entry_count=1, total_word_count=5, summary="s", mood_notes="m", key_topics=[], mood_score=score),
+            ))
+
+    with TestClient(app) as client:
+        response = client.get("/analysis")
+
+    assert "<svg" in response.text
+    assert "Mood trend" in response.text
+
+
+def test_analysis_page_has_no_mood_chart_with_fewer_than_two_scored_snapshots(client):
+    response = client.get("/analysis")
+    assert "Mood trend" not in response.text

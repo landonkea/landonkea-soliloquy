@@ -1,0 +1,321 @@
+/* ───────────────────────────────────────────────────────────────────
+   style.css -- extracted from base.html so login.html (which can't
+   assume an authenticated session, so shouldn't extend base.html's
+   nav) can share it, and so the PWA manifest has a real stylesheet
+   file to point at instead of an inline <style> block.
+
+   Two palettes, same variable names: a light default (diffused orange
+   + a yellow sunburst glow behind the header, its true color-wheel
+   complement slate blue used sparingly as the secondary note) and a
+   dark one swapped in automatically via prefers-color-scheme --
+   there's no manual toggle, this follows whatever the device is
+   already set to, light or dark, the same way the rest of a phone's
+   apps do.
+   ─────────────────────────────────────────────────────────────────── */
+
+:root {
+  --bg: #fdf6ef;
+  --surface: #ffffff;
+  --border: #f0dfc9;
+  --text: #3a2e22;
+  --text-muted: #9c8a72;
+  --accent: #e08a4b;
+  --accent-hover: #c97230;
+  --accent-soft: #fbe8d4;
+  --accent-soft-border: #f0cba0;
+  --accent-yellow: #f5c344;
+  --accent-yellow-soft: #fdf0cd;
+  --complement: #4e7c93;
+  --complement-hover: #3c6478;
+  --complement-soft: #e3eef2;
+  --complement-soft-border: #bcd6e0;
+  --ok: #3f7d4f;
+  --error: #b0483a;
+  --radius: 14px;
+  --shadow: 0 1px 2px rgba(46, 42, 36, 0.04), 0 4px 16px rgba(46, 42, 36, 0.06);
+
+  /* The sunburst: two soft yellow/orange glows fixed in the top
+     corners, behind everything else. Subtle on purpose -- it should
+     read as warmth, not as a background image fighting the text. */
+  --sunburst:
+    radial-gradient(circle at 12% -15%, rgba(245, 195, 68, 0.4), transparent 42%),
+    radial-gradient(circle at 92% -5%, rgba(224, 138, 75, 0.28), transparent 38%);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #1c1712;
+    --surface: #262019;
+    --border: #3a3025;
+    --text: #f0e6d8;
+    --text-muted: #a89678;
+    --accent: #e59a58;
+    --accent-hover: #f2ac6c;
+    --accent-soft: #3a2c1a;
+    --accent-soft-border: #5c4526;
+    --accent-yellow: #f0c869;
+    --accent-yellow-soft: #362c16;
+    --complement: #86b0c4;
+    --complement-hover: #9dc0d2;
+    --complement-soft: #202d33;
+    --complement-soft-border: #35505c;
+    --ok: #6fbd82;
+    --error: #e08876;
+    --shadow: 0 1px 2px rgba(0, 0, 0, 0.25), 0 4px 16px rgba(0, 0, 0, 0.35);
+
+    /* Dimmer in the dark palette -- the same glow at light-mode
+       opacity would read as a lighting bug, not a design choice. */
+    --sunburst:
+      radial-gradient(circle at 12% -15%, rgba(245, 195, 68, 0.14), transparent 42%),
+      radial-gradient(circle at 92% -5%, rgba(224, 138, 75, 0.12), transparent 38%);
+  }
+}
+
+* { box-sizing: border-box; }
+
+body {
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+  background: var(--sunburst), var(--bg);
+  background-attachment: fixed;
+  color: var(--text);
+  max-width: 720px;
+  margin: 0 auto;
+  padding: 1.5rem 1.25rem 4rem;
+  line-height: 1.55;
+  font-size: 16px;
+}
+
+h1 {
+  font-size: 1.6rem;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  margin: 0.25rem 0 1.25rem;
+}
+
+header {
+  margin-bottom: 1.5rem;
+  padding-bottom: 1rem;
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.header-main { flex: 1; }
+
+.brand-name {
+  display: block;
+  font-size: 1.35rem;
+  font-weight: 700;
+  color: var(--text);
+  text-decoration: none;
+  letter-spacing: -0.01em;
+  margin-bottom: 0.6rem;
+}
+
+nav { display: flex; gap: 1.25rem; flex-wrap: wrap; }
+nav a {
+  text-decoration: none;
+  color: var(--text-muted);
+  font-weight: 600;
+  font-size: 0.92rem;
+  padding: 0.3rem 0;
+  border-bottom: 2px solid transparent;
+  transition: color 0.15s ease, border-color 0.15s ease;
+}
+nav a:hover { color: var(--accent); }
+nav a.active { color: var(--accent); border-bottom-color: var(--accent); }
+
+.logout-form { margin-top: 0.1rem; }
+.logout-form button {
+  background: none;
+  color: var(--text-muted);
+  font-size: 0.82rem;
+  font-weight: 600;
+  padding: 0.3rem 0.5rem;
+}
+.logout-form button:hover { color: var(--error); background: none; }
+
+.entry, fieldset, .card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  padding: 1.25rem;
+  margin-bottom: 1.25rem;
+}
+
+fieldset { padding-top: 0.5rem; }
+legend {
+  font-weight: 700;
+  font-size: 0.95rem;
+  padding: 0 0.4rem;
+  color: var(--text);
+}
+
+.entry-meta { color: var(--text-muted); font-size: 0.82rem; margin-bottom: 0.6rem; }
+.entry p { margin: 0 0 0.75rem; }
+.entry audio, .entry video {
+  max-width: 100%;
+  display: block;
+  border-radius: 10px;
+}
+.media-with-volume { margin: 0.6rem 0; }
+.volume-control {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.8rem;
+  color: var(--text-muted);
+  margin-top: 0.4rem;
+  font-weight: 600;
+}
+.volume-control input[type=range] { width: 140px; margin: 0; accent-color: var(--complement); }
+
+.transcript-edit { min-height: 4rem; }
+
+.share-flags {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.5rem;
+  margin-top: 0.75rem;
+}
+.share-flags label {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.9rem;
+  cursor: pointer;
+}
+.share-flags input[type="checkbox"] { width: 1.05rem; height: 1.05rem; accent-color: var(--accent); }
+
+label { font-weight: 600; font-size: 0.9rem; display: block; margin-bottom: 1rem; }
+
+textarea, input[type=text], input[type=password], input[type=number], input[type=file], select {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 0.6rem 0.7rem;
+  margin-top: 0.35rem;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--bg);
+  font-size: 0.95rem;
+  font-family: inherit;
+  color: var(--text);
+}
+textarea:focus, input:focus, select:focus {
+  outline: none;
+  border-color: var(--accent);
+  background: var(--surface);
+}
+
+button, .btn {
+  padding: 0.6rem 1.1rem;
+  cursor: pointer;
+  border: none;
+  border-radius: 8px;
+  background: var(--accent);
+  color: white;
+  font-weight: 600;
+  font-size: 0.9rem;
+  font-family: inherit;
+  transition: background 0.15s ease;
+}
+button:hover, .btn:hover { background: var(--accent-hover); }
+button.secondary, .btn.secondary {
+  background: var(--complement-soft);
+  color: var(--complement-hover);
+  border: 1px solid var(--complement-soft-border);
+}
+button.secondary:hover, .btn.secondary:hover { background: var(--complement-soft-border); border-color: var(--complement); }
+
+.status { margin-top: 0.6rem; font-size: 0.87rem; font-weight: 600; }
+.status.ok { color: var(--ok); }
+.status.error { color: var(--error); }
+
+pre.report {
+  white-space: pre-wrap;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  padding: 1.1rem;
+  border-radius: var(--radius);
+}
+
+.prompt-box {
+  background: var(--accent-soft);
+  border: 1px solid var(--accent-soft-border);
+  border-radius: var(--radius);
+  padding: 1.1rem 1.25rem;
+  margin-bottom: 1.5rem;
+}
+.prompt-label {
+  font-size: 0.72rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--accent-hover);
+  margin-bottom: 0.3rem;
+}
+.prompt-text { font-size: 1.1rem; font-style: italic; color: var(--text); }
+
+.tip-box {
+  background: var(--complement-soft);
+  border: 1px solid var(--complement-soft-border);
+  border-radius: var(--radius);
+  padding: 0.9rem 1.1rem;
+  margin-bottom: 1.5rem;
+  font-size: 0.92rem;
+  color: var(--text);
+}
+.tip-label {
+  font-size: 0.7rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--complement-hover);
+  margin-bottom: 0.25rem;
+}
+
+.capture-choice { display: flex; gap: 0.6rem; margin-top: 0.5rem; }
+.capture-choice > div { flex: 1; }
+.capture-choice label { font-size: 0.78rem; color: var(--text-muted); margin-bottom: 0.35rem; }
+.capture-choice input[type=file] { display: none; }
+.capture-choice button { width: 100%; }
+
+.empty-state { color: var(--text-muted); }
+.empty-state a { color: var(--accent); }
+
+.streak-line { color: var(--text-muted); font-size: 0.88rem; margin: -0.5rem 0 1rem; }
+
+.search-form { display: flex; gap: 0.5rem; margin-bottom: 1rem; flex-wrap: wrap; }
+.search-form input[type=text] { flex: 1; min-width: 160px; margin-top: 0; }
+.search-form select { margin-top: 0; width: auto; }
+
+.tag-row { display: flex; align-items: center; gap: 0.4rem; flex-wrap: wrap; margin: 0.5rem 0; }
+.tag-chip {
+  background: var(--accent-soft);
+  color: var(--accent-hover);
+  border: 1px solid var(--accent-soft-border);
+  border-radius: 999px;
+  padding: 0.15rem 0.65rem;
+  font-size: 0.78rem;
+  font-weight: 600;
+  text-decoration: none;
+}
+.tag-chip:hover { background: var(--accent-soft-border); }
+.tag-edit-btn { padding: 0.15rem 0.6rem; font-size: 0.78rem; }
+
+/* ── Login page ──────────────────────────────────────────────────── */
+.login-wrap {
+  min-height: calc(100vh - 6rem);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.login-card { width: 100%; max-width: 360px; text-align: center; }
+.login-icon { width: 64px; height: 64px; margin: 0 auto 1rem; display: block; border-radius: 16px; }
+.login-card h1 { font-size: 1.3rem; margin-bottom: 1.25rem; }
+.login-card label { text-align: left; }
+.login-card button { width: 100%; margin-top: 0.25rem; }

@@ -1,42 +1,24 @@
-# Overlay that adds the Soliloquy app itself as a container, on top of
-# the Postgres/MinIO/Mosquitto stack already defined in
-# docker-compose.yml. NOT used by the normal dev loop -- the README's
-# "python -m soliloquy.web on the host" flow still works exactly as
-# before and is still the fastest path day to day. This exists to run
-# the actual built image (the same one the .github/workflows/deploy-*
-# pipelines build) somewhere before it ships anywhere real.
+# Overlay for testing the actual RELEASE image (the same "release"
+# target staging/prod ship, and the .github/workflows/deploy-* pipelines
+# build) before it goes anywhere real. NOT the normal dev loop --
+# docker-compose.yml's own `app` service (dev target, hot reload via a
+# bind mount) already covers that; see its comments and README's Quick
+# start. This overlay swaps the build target to "release" and drops the
+# bind mount, since the whole point is confirming the image works as
+# actually built, not as edited live.
 #
 # Usage:
 #   docker compose -f docker-compose.yml -f docker-compose.app.yml \
-#     --env-file .env.dev up -d --build
+#     up -d --build
 #
-# Why DATABASE_URL/S3_ENDPOINT_URL/MQTT_HOST are overridden below
-# instead of just loading .env.dev as-is: .env.dev's values
-# (localhost:5433, localhost:9000, localhost) are correct for the app
-# running directly on the host, but from inside this container,
-# "localhost" means the container itself, not the postgres/minio/
-# mosquitto containers next to it. Compose gives every service in a
-# project a DNS name matching its service name, so the container-only
-# values point at "postgres"/"minio"/"mosquitto" (and Postgres/MinIO's
-# real container ports, 5432/9000, not the host-remapped 5433) instead.
+# Defaults to .env.staging below (the more common "does this actually
+# work before it ships" check); edit env_file here to point at
+# .env.prod instead if that's specifically what needs testing.
 services:
   app:
     build:
       context: .
-      target: dev
-    ports:
-      - "127.0.0.1:8000:8000"
+      target: release
+    volumes: !reset []
     env_file:
-      - .env.dev
-    environment:
-      DATABASE_URL: postgresql://soliloquy:soliloquy@postgres:5432/soliloquy
-      S3_ENDPOINT_URL: http://minio:9000
-      MQTT_HOST: mosquitto
-    depends_on:
-      - postgres
-      - minio
-      - mosquitto
-    volumes:
-      # Bind-mount source over the image's copy so `--reload` (the dev
-      # target's CMD) picks up host edits without a rebuild.
-      - ./src:/app/src
+      - .env.staging

@@ -1,5 +1,5 @@
 import os
-from datetime import datetime, timedelta, timezone
+from datetime import date, datetime, timedelta, timezone
 
 import psycopg
 import pytest
@@ -211,6 +211,227 @@ def test_update_sharing_with_no_flags_passed_is_a_no_op_that_confirms_existence(
 
     assert store.update_sharing(entry.id) is True
     assert store.update_sharing("does-not-exist") is False
+
+
+# ── Tags ─────────────────────────────────────────────────────────────
+
+def test_tags_round_trip_when_set(store):
+    entry = Entry(transcript="entry about work", tags=["work", "stress"])
+    store.add(entry)
+
+    fetched = store.get(entry.id)
+
+    assert fetched.tags == ["work", "stress"]
+
+
+def test_new_entries_default_to_no_tags(store):
+    entry = Entry(transcript="untagged")
+    store.add(entry)
+
+    assert store.get(entry.id).tags == []
+
+
+def test_update_tags_replaces_the_tag_list(store):
+    entry = Entry(transcript="entry", tags=["old"])
+    store.add(entry)
+
+    assert store.update_tags(entry.id, ["new", "tags"]) is True
+    assert store.get(entry.id).tags == ["new", "tags"]
+
+
+def test_by_tag_returns_only_entries_with_that_tag(store):
+    store.add(Entry(transcript="about work", tags=["work"]))
+    store.add(Entry(transcript="about family", tags=["family"]))
+    store.add(Entry(transcript="about both", tags=["work", "family"]))
+
+    results = store.by_tag("work")
+
+    assert {e.transcript for e in results} == {"about work", "about both"}
+
+
+def test_all_tags_returns_distinct_tags_sorted():
+    with EntryStore(TEST_DATABASE_URL) as s:
+        s._conn.execute("TRUNCATE TABLE entries")
+        s.add(Entry(transcript="a", tags=["work", "family"]))
+        s.add(Entry(transcript="b", tags=["family", "health"]))
+
+        assert s.all_tags() == ["family", "health", "work"]
+
+
+# ── Speaker ──────────────────────────────────────────────────────────
+
+def test_speaker_round_trips_when_set(store):
+    entry = Entry(transcript="from the household", speaker="Landon")
+    store.add(entry)
+
+    assert store.get(entry.id).speaker == "Landon"
+
+
+def test_new_entries_default_to_no_speaker(store):
+    entry = Entry(transcript="entry")
+    store.add(entry)
+
+    assert store.get(entry.id).speaker is None
+
+
+# ── Full-text search ─────────────────────────────────────────────────
+
+def test_search_finds_entries_containing_the_query(store):
+    store.add(Entry(transcript="I talked to my sister about the move"))
+    store.add(Entry(transcript="Nothing much happened today"))
+
+    results = store.search("sister")
+
+    assert [e.transcript for e in results] == ["I talked to my sister about the move"]
+
+
+def test_search_returns_nothing_for_unmatched_terms(store):
+    store.add(Entry(transcript="a totally unrelated entry"))
+
+    assert store.search("nonexistentword") == []
+
+
+def test_search_is_not_confused_by_word_stems(store):
+    # plainto_tsquery + the 'english' config should match "running" to
+    # a search for "run" -- proves real full-text search is happening,
+    # not a plain substring LIKE.
+    store.add(Entry(transcript="I went running this morning"))
+
+    results = store.search("run")
+
+    assert len(results) == 1
+
+
+# ── On this day ──────────────────────────────────────────────────────
+
+def test_on_this_day_returns_entries_from_the_same_month_and_day_in_past_years(store):
+    store.add(Entry(transcript="last year, same day", created_at=datetime(2025, 3, 14, tzinfo=timezone.utc)))
+    store.add(Entry(transcript="two years ago, same day", created_at=datetime(2024, 3, 14, tzinfo=timezone.utc)))
+    store.add(Entry(transcript="same day this year but later", created_at=datetime(2026, 3, 14, tzinfo=timezone.utc)))
+    store.add(Entry(transcript="different day", created_at=datetime(2025, 3, 15, tzinfo=timezone.utc)))
+
+    results = store.on_this_day(date(2026, 3, 14))
+
+    assert {e.transcript for e in results} == {"last year, same day", "two years ago, same day"}
+
+
+# ── Streak / cadence helper (distinct_entry_dates) ──────────────────
+
+def test_distinct_entry_dates_counts_each_day_once_regardless_of_entry_count(store):
+    store.add(Entry(transcript="morning", created_at=datetime(2026, 3, 10, 8, tzinfo=timezone.utc)))
+    store.add(Entry(transcript="evening", created_at=datetime(2026, 3, 10, 20, tzinfo=timezone.utc)))
+    store.add(Entry(transcript="next day", created_at=datetime(2026, 3, 11, 8, tzinfo=timezone.utc)))
+    store.add(Entry(transcript="too old", created_at=datetime(2026, 1, 1, tzinfo=timezone.utc)))
+
+    dates = store.distinct_entry_dates(datetime(2026, 3, 1, tzinfo=timezone.utc))
+
+    assert dates == {date(2026, 3, 10), date(2026, 3, 11)}
+
+
+# ── Media retention helpers ──────────────────────────────────────────
+
+def test_entries_with_media_older_than_finds_only_old_entries_with_media(store):
+    cutoff = datetime(2026, 3, 1, tzinfo=timezone.utc)
+    old_with_media = Entry(
+        transcript="old with audio", audio_path="audio/old.wav", created_at=datetime(2026, 1, 1, tzinfo=timezone.utc)
+    )
+    old_without_media = Entry(transcript="old, text only", created_at=datetime(2026, 1, 1, tzinfo=timezone.utc))
+    recent_with_media = Entry(
+        transcript="recent with audio", audio_path="audio/new.wav", created_at=datetime(2026, 3, 15, tzinfo=timezone.utc)
+    )
+    store.add(old_with_media)
+    store.add(old_without_media)
+    store.add(recent_with_media)
+
+    results = store.entries_with_media_older_than(cutoff)
+
+    assert [e.transcript for e in results] == ["old with audio"]
+
+
+def test_clear_media_paths_removes_audio_and_video_but_keeps_the_transcript(store):
+    entry = Entry(transcript="keep this text", audio_path="audio/a.wav", video_path="video/a.mp4")
+    store.add(entry)
+
+    assert store.clear_media_paths(entry.id) is True
+
+    fetched = store.get(entry.id)
+    assert fetched.transcript == "keep this text"
+    assert fetched.audio_path is None
+    assert fetched.video_path is None
+
+
+def test_clear_media_paths_returns_false_for_an_unknown_entry_id(store):
+    assert store.clear_media_paths("does-not-exist") is False
+
+
+# ── Encryption at rest ───────────────────────────────────────────────
+
+def test_transcript_is_stored_as_plaintext_when_no_encryption_key_is_configured(store):
+    entry = Entry(transcript="plaintext by default")
+    store.add(entry)
+
+    raw = store._conn.execute("SELECT transcript FROM entries WHERE id = %s", (entry.id,)).fetchone()[0]
+    assert raw == "plaintext by default"
+
+
+def test_transcript_round_trips_through_encryption_and_is_unreadable_in_the_raw_column():
+    from cryptography.fernet import Fernet
+
+    key = Fernet.generate_key().decode()
+    with EntryStore(TEST_DATABASE_URL, encryption_key=key) as s:
+        s._conn.execute("TRUNCATE TABLE entries")
+        entry = Entry(transcript="a genuinely private thought")
+        s.add(entry)
+
+        raw = s._conn.execute("SELECT transcript FROM entries WHERE id = %s", (entry.id,)).fetchone()[0]
+        assert "a genuinely private thought" not in raw
+        assert raw.startswith("enc1:")
+
+        fetched = s.get(entry.id)
+        assert fetched.transcript == "a genuinely private thought"
+
+
+def test_search_still_works_when_encryption_is_on():
+    from cryptography.fernet import Fernet
+
+    key = Fernet.generate_key().decode()
+    with EntryStore(TEST_DATABASE_URL, encryption_key=key) as s:
+        s._conn.execute("TRUNCATE TABLE entries")
+        s.add(Entry(transcript="I talked to my sister about the move"))
+
+        results = s.search("sister")
+
+        assert len(results) == 1
+        assert results[0].transcript == "I talked to my sister about the move"
+
+
+def test_reading_an_encrypted_entry_without_the_key_raises_a_clear_error():
+    from cryptography.fernet import Fernet
+
+    key = Fernet.generate_key().decode()
+    with EntryStore(TEST_DATABASE_URL, encryption_key=key) as s:
+        s._conn.execute("TRUNCATE TABLE entries")
+        entry = Entry(transcript="locked without the key")
+        s.add(entry)
+        entry_id = entry.id
+
+    with EntryStore(TEST_DATABASE_URL) as s_no_key:  # no encryption_key this time
+        with pytest.raises(RuntimeError, match="TRANSCRIPT_ENCRYPTION_KEY"):
+            s_no_key.get(entry_id)
+
+
+def test_reading_an_encrypted_entry_with_the_wrong_key_raises_a_clear_error():
+    from cryptography.fernet import Fernet
+
+    with EntryStore(TEST_DATABASE_URL, encryption_key=Fernet.generate_key().decode()) as s:
+        s._conn.execute("TRUNCATE TABLE entries")
+        entry = Entry(transcript="encrypted with key A")
+        s.add(entry)
+        entry_id = entry.id
+
+    with EntryStore(TEST_DATABASE_URL, encryption_key=Fernet.generate_key().decode()) as s_wrong_key:
+        with pytest.raises(RuntimeError, match="couldn't be decrypted"):
+            s_wrong_key.get(entry_id)
 
 
 def test_a_db_created_before_the_optional_columns_existed_still_opens_and_defaults_correctly():

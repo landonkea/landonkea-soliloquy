@@ -366,6 +366,240 @@ and the unrelated CRM/CMS + PWA project.
   live on the same physical disk. See README's Backups section for free offsite-redundancy options
   to close that gap, and the tradeoffs between them.
 
+## Extra: password gate, automatic dark mode + PWA, container-first setup ✅ done
+
+- [x] `src/soliloquy/auth.py`: single-user password gate, off by default (no `AUTH_PASSWORD` set
+      means every route stays open, so a fresh clone with no `.env` still runs with zero setup),
+      a startup log line either way (`describe_auth_mode()`, same pattern as
+      `deployment_mode.py`'s informational print). One password compared with
+      `hmac.compare_digest` (constant-time, not `==`) against `$AUTH_PASSWORD`, a Starlette
+      `SessionMiddleware`-backed signed cookie (`itsdangerous`, added to the `web` extra), and a
+      small in-memory lockout (5 wrong attempts, 30s) -- no accounts, no third-party identity
+      provider, nothing paid, entirely self-contained.
+  - **Non-obvious ordering trap, worth flagging for next time this changes**: Starlette's
+    `add_middleware()` prepends to the middleware list, so the middleware added *last* ends up
+    *outermost* (runs first on every request). Registering `AuthMiddleware` before
+    `SessionMiddleware` would put auth outside the session layer, and `AuthMiddleware.dispatch()`
+    reads `request.session` -- every request would 500 with "SessionMiddleware must be installed
+    to access request.session." Confirmed by reading Starlette's own `add_middleware`/
+    `build_middleware_stack` source directly rather than guessing, then registered
+    `SessionMiddleware` second on purpose (see the comment above the registration in
+    `web/app.py`), so this was never actually broken live, just a trap worth documenting since
+    it's easy to get backwards.
+  - `/healthz` added, deliberately exempt from the auth gate, so the container `HEALTHCHECK`
+    (which never carries a session cookie) doesn't start reporting a correctly-locked-down app as
+    unhealthy the moment `AUTH_PASSWORD` gets set. `Dockerfile`'s `HEALTHCHECK` now points at it
+    instead of `/entries`.
+  - 11 new tests (`tests/test_auth.py`): auth disabled is a no-op, enabled redirects to `/login`,
+    `/healthz` bypasses it, wrong password rejected, correct password unlocks the session, an
+    open-redirect attempt via `?next=` is rejected in favor of `/`, logout clears the session,
+    repeated wrong attempts trigger the lockout and it expires on schedule. Full suite (164
+    tests total now) verified green, and verified live against a real running server with
+    `AUTH_PASSWORD` set (curl + a real browser): `/` redirects to `/login`, wrong password
+    rejected, correct password lands on Entries with a working "Log out" button, `/healthz`
+    reachable throughout with no cookie at all.
+- [x] Automatic dark mode: `static/style.css` (extracted from `base.html`'s old inline `<style>`
+      block, so `login.html` -- which can't extend `base.html`'s nav, there's no session yet --
+      can share it) defines the same CSS variable names twice, once under plain `:root` (light,
+      the default) and once under `@media (prefers-color-scheme: dark)`. No manual toggle, by
+      request -- it follows whatever the device is already set to, the same way the rest of a
+      phone's apps do.
+- [x] Default light palette redone as diffused orange **with a soft yellow sunburst glow** behind
+      the header (two radial gradients fixed to the top corners, dimmed further in the dark
+      palette so it reads as warmth, not a lighting bug), per explicit request. Verified visually
+      in a real browser in both palettes (a temporary static preview page forced the light
+      variables regardless of the OS's actual dark-mode setting, to check both without needing to
+      flip a system preference back and forth); the real login/entries pages were also checked
+      live against the OS's actual (dark) preference.
+- [x] Installable as a PWA: `static/manifest.json` + a generated icon set (`icon.svg`, a warm
+      sunburst mark with a soundwave glyph, rendered to `icon-192/512.png`, `apple-touch-icon.png`,
+      and `favicon.ico` via `rsvg-convert`), linked from `base.html`'s `<head>` (`manifest`,
+      `icon`, `apple-touch-icon`, `theme-color`). "Add to Home Screen" on a phone now gives
+      Soliloquy its own icon and a full-screen launch, no browser chrome.
+- [x] Container-first: `docker-compose.yml` gained an `app` service (dev target, hot-reloaded via
+      a bind mount) as a fourth first-class member alongside Postgres/MinIO/Mosquitto, so
+      `docker compose up -d --build` (after `cp .env.example .env`) is now the entire setup, no
+      host Python/ffmpeg/Rust needed. `docker-compose.app.yml` (previously *the* way to run the
+      app in a container, explicitly flagged as "not the normal dev loop") is repurposed as an
+      overlay specifically for testing the shipped `release` image before it goes anywhere real,
+      the same role it always had, just no longer the only way to get the app into a container at
+      all.
+  - **Real gap found and fixed**: `Dockerfile`'s `base` stage installed `build-essential` but not
+    a Rust toolchain, and `deepfilterlib` (the `transcribe` extra's native dependency, see
+    `noise_reduction.py`) needs one to compile -- meaning `docker build`/`docker compose up
+    --build` would have failed partway through `pip install .[transcribe]` in a plain container,
+    the real reason the app container wasn't the primary documented path before now. Fixed by
+    installing rustup (matching the README's own host-install instructions, not Debian's older
+    packaged `cargo`/`rustc`) in the `base` stage, then removing `~/.cargo`/`~/.rustup` (~1GB)
+    again in both the `dev` and `release` stages right after their `pip install`, since nothing at
+    runtime needs the toolchain, only the native build step does.
+  - **Second real gap found and fixed, this one only surfaces at runtime, not build time**:
+    DeepFilterNet's own `df.logger.init_logger()` shells out to `git rev-parse` on every startup
+    to log its own commit hash, and raised `FileNotFoundError` straight through
+    `noise_reduction.preload()` (called from the app's `lifespan`, so this crashed the whole
+    container on boot) the first time the built image actually ran, `git` was never installed in
+    the base image. Never surfaces on a host install since macOS ships `git` already, only found
+    by actually starting the container, not by the build succeeding. Fixed with one more package
+    in the same `apt-get install` line. (DeepFilterNet's own code already catches the "installed
+    but not inside a git repo" case, `CalledProcessError`, gracefully, logging `None` and moving
+    on, confirmed by reading `df/utils.py` directly -- it only ever needed `git` to *exist*, not
+    for `/app` to actually be a git checkout.)
+  - **Third real gap found while first building the image, unrelated to Rust**: PyPI's default
+    `torch` wheel for Linux pulls in a full CUDA stack (`nvidia-cublas`, `nvidia-cudnn`,
+    `nvidia-nccl`, `triton`, ...) as dependencies even though nothing here has, or needs, a GPU,
+    caught mid-build the first time (multiple gigabytes of downloads before the fix, watched it
+    happen, didn't just assume it would be a problem). Fixed by installing the CPU-only
+    `torch`/`torchaudio` build (`--index-url https://download.pytorch.org/whl/cpu`) in the `base`
+    stage before either extras install, confirmed on the rebuild that `pip install .[transcribe]`
+    then reports `torch>=2.0` "already satisfied" with the CPU build instead of reaching for the
+    GPU wheels.
+  - `.dockerignore` added (didn't exist before) -- without it, every `docker build` sent the
+    *entire* repo as build context to the daemon, `.venv/` alone can be gigabytes once
+    torch/deepfilternet are installed on the host, even though the `Dockerfile` only ever `COPY`s
+    `pyproject.toml` and `src/`.
+  - **Fourth gap, in `start.command`, not `Dockerfile`**: `start.command`'s own `docker compose up
+    -d` (no service list) would now also try to build and start the new `app` service, competing
+    for port 8000 with that same script's later `python -m soliloquy.web`, and would fail outright
+    for anyone who hadn't created a `.env` yet (the `app` service's `env_file`). Fixed by naming
+    the three infra services explicitly (`docker compose up -d postgres minio mosquitto`);
+    verified the fixed command only touches those three, `app` untouched, against the real
+    running stack.
+  - `.env.example`/`.env.dev`/`.env.staging`/`.env.prod` all gained `AUTH_PASSWORD`/
+    `SESSION_SECRET_KEY` entries (blank in `.env.example`/`.env.dev`, `CHANGEME` placeholders in
+    `.env.staging`/`.env.prod`, matching how every other real-credential placeholder in those two
+    files is already marked).
+  - **Verified live, the real way, not just "the build succeeded"**: `docker compose up -d` (the
+    exact command README's Quick start now leads with) brings up all four containers, `app`
+    reaches Docker's own `(healthy)` status against `/healthz`. Hit the running containerized app
+    directly over HTTP: created a real entry (`POST /entries`), listed it back (`GET /entries`),
+    fetched `/static/manifest.json` and an icon, deleted the test entry again. Then set
+    `AUTH_PASSWORD` in `.env`, recreated just the `app` container, confirmed `/` now 303s to
+    `/login` while `/healthz` still bypasses it, then reset `.env` back to blank/default before
+    finishing. `docker compose config` (both the plain file and with `docker-compose.app.yml`
+    layered on top) also checked directly to confirm the service-DNS-name overrides, the
+    `.env`/`.env.staging` `env_file` swap between the two, and the bind-mount removal in the
+    overlay all resolve the way the comments say they do.
+
+## Extra: all 18 FEATURE_IDEAS.md items, plus the makeItSoNumberOne side of 2 of them ✅ done
+
+Everything that was in `FEATURE_IDEAS.md` is built now; that file is back to empty. Grouped by
+area, not the original numbering (see git history for the original list if it's ever useful).
+
+- [x] **Full-text search + tags + speaker.** `entries` gained `tags TEXT[]`, `speaker TEXT`, and
+      a `search_vector TSVECTOR` column (GIN-indexed), all via the existing `_ensure_columns()`
+      migration-stopgap pattern. `EntryStore.search()`, `.by_tag()`, `.all_tags()`. Entries page
+      gained a search box + tag filter dropdown + inline tag editor (comma-separated text input,
+      same interaction pattern as transcript editing). Verified live in a browser in both
+      light/dark: searched "sister" against two real entries, got the one real match; tag chips
+      link back to `/?tag=...`.
+- [x] **Encrypt transcripts at rest, without breaking search.** These two were flagged as in
+      tension (search needs plaintext to index) and resolved the standard way: `search_vector` is
+      built from plaintext at write time, BEFORE the `transcript` column itself gets encrypted
+      (Fernet, `$TRANSCRIPT_ENCRYPTION_KEY`, off by default like every other protective-but-not-
+      free-to-set-up feature here). An `"enc1:"` prefix marks which rows are ciphertext so mixed
+      encrypted/plaintext data (from turning the key on partway through this journal's life)
+      reads back correctly either way; reading an encrypted row with no/the-wrong key raises a
+      clear `RuntimeError`, not silent garbage. `scripts/encrypt_existing_transcripts.py`,
+      one-time, explicit, backfills existing plaintext rows -- NOT run automatically on startup,
+      re-encrypting real journal entries is a deliberate action, not a schema-check side effect.
+      Genuinely verified, not assumed: encrypted a real entry, confirmed the raw `transcript`
+      column is unreadable ciphertext, confirmed `search()` still finds it by content, confirmed
+      the backfill script actually encrypts existing plaintext rows in place.
+- [x] **"On this day" + a streak line.** `EntryStore.on_this_day()` (same month/day, any earlier
+      year) shown on the unfiltered Entries page. `actions.journaling_streak()` ("journaled N of
+      the last 7 days") shown above the search box. Both skip rendering during an active
+      search/tag filter -- showing "on this day" underneath search results doesn't make sense.
+- [x] **Mood trend chart.** `AnalysisResult` gained an optional `mood_score` (1-10, the analyzer's
+      own rough read, asked for in the same prompt, NOT required in the response so a provider
+      that ignores the field doesn't fail the whole analysis over a chart data point).
+      `analysis_snapshots` gained a nullable `mood_score` column via the same migration pattern.
+      `mood_chart.py` renders a plain inline SVG polyline (no charting library, matches this app's
+      "no separate JS build" stance) on the Analysis page, only when there are 2+ scored
+      snapshots. Verified live: seeded 5 real snapshots with real scores, the chart rendered
+      correctly in a real browser, tracking the shape of the seeded data.
+- [x] **Per-audience analysis instructions.** `actions.AUDIENCE_INSTRUCTIONS` (empty for "self",
+      real framing text for "partner"/"provider") appended to the analyzer prompt via a new
+      `instruction` param threaded through `Analyzer.analyze()` and every implementation
+      (`_HttpAnalyzer`, `FallbackAnalyzer`) -- one new optional param, not a second prompt-
+      building path.
+- [x] **Saved reports + expiring signed share links.** New `report_store.py`
+      (`SavedReport`/`SavedReportStore`, one Postgres table, always markdown, "the most natural
+      format for actually handing to a therapist" per this README) and signed tokens
+      (`itsdangerous`, reusing `$SESSION_SECRET_KEY` with a distinct `salt` so a share link and a
+      login session can never be confused for each other even off the same secret). `/reports/save`
+      (manual, any audience/day-range), `/reports/saved` (list + "Get share link"),
+      `/reports/shared/{token}` (deliberately exempt from `AuthMiddleware`, see `auth.py` -- the
+      whole point is a link someone with no account here can open). A scheduled monthly job
+      (`run_scheduled_monthly_report`, `CronTrigger(day=1, hour=3)`, "self", 30 days) saves one
+      automatically. Verified live: saved a report, minted a share link, opened it with the
+      session cookie cleared entirely (confirms the auth-exemption actually works, not just that
+      the route exists), got the real content back.
+- [x] **"Next analysis run" indicator.** `_lifespan` stashes the running `BackgroundScheduler` on
+      `app.state.scheduler`; `/analysis` reads its `analysis` job's `next_run_time`.
+- [x] **Punctuation/paragraph cleanup after transcription.** `transcript_cleanup.py`, rule-based
+      (capitalize sentence starts, add missing terminal punctuation, break into paragraphs every 4
+      sentences), deliberately NOT another AI call, applied only to transcribed (audio/video)
+      entries, never to typed ones (which are already however the person chose to format them).
+      Broke 3 existing tests' exact-transcript assertions in the expected way (raw fake-Whisper
+      output vs. cleaned output) -- fixed those assertions to match the new, correct behavior.
+- [x] **Opt-in media retention.** `$MEDIA_RETENTION_DAYS` (unset -- the default -- means keep
+      forever). `scheduler.run_media_retention_cleanup()`, a daily job when the env var is set,
+      deletes audio/video from object storage for entries older than the cutoff and clears their
+      `audio_path`/`video_path`, transcript and everything else untouched. Verified against real
+      MinIO: uploaded a real file, ran the job, confirmed it's actually gone from object storage
+      (not just that the DB row changed) and that a recent entry's media is left alone.
+- [x] **Desktop notification on a new snapshot.** `notify.py`, `osascript`, macOS only, a plain
+      no-op everywhere else including inside the Linux container (no `osascript` on `PATH` there)
+      -- never raises, same "a notification failing shouldn't crash the job" reasoning as the rest
+      of `scheduler.py`. AppleScript string escaping tested directly (an AI-generated summary
+      landing in a shell-adjacent string is exactly the kind of thing worth escaping correctly).
+- [x] **MQTT: ack, query, append, durable session.** `mqtt_bridge.py`: writes to `$MQTT_TOPIC` now
+      get a real ack published to `$MQTT_TOPIC/ack` (`{"status": "ok", "entry_id", "appended"}` or
+      `{"status": "error", "reason"}`); a `{"type": "append"}` message merges into today's most
+      recent entry (same speaker, within the last hour) via the new
+      `actions.append_or_add_entry()`; a new `$MQTT_TOPIC/query` topic (`{"days": N}`) runs a real
+      analysis and publishes a summary back on `$MQTT_TOPIC/query/response`, day-count only (not
+      natural language like "last week") since makeItSoNumberOne's own AI is what's already
+      turning a spoken question into structured params before publishing, same division of labor
+      as the write topic relaying an already-transcribed string. The listener itself now connects
+      with a fixed `client_id` + `clean_session=False` and subscribes at QoS 1, so Mosquitto
+      durably queues messages for it while it's offline instead of dropping them.
+  - **Real, load-bearing verification, not just unit tests against a fake broker**: started the
+    actual listener against the real Mosquitto container, published a real message, confirmed a
+    real ack came back; published an append message, confirmed the merge; then the actual
+    durability claim specifically -- STOPPED the listener, published a real QoS-1 message while it
+    was down, confirmed nothing happened yet, RESTARTED the listener, confirmed the queued message
+    was delivered on reconnect. This is the one behavior that's easy to convince yourself works
+    from reading the code and be wrong about, so it got run for real rather than assumed.
+- [x] **Both makeItSoNumberOne-side items, not skipped.** FEATURE_IDEAS.md's items 4 (retry queue)
+      and 5 (multi-speaker) both needed real work in `landonkea-makeItSoNumberOne`, a separate
+      repo, done this session too, not deferred:
+  - `journal_entry_plugin.py` now publishes at QoS 1 (was QoS 0 -- without this fix, the durable
+    subscriber session above literally couldn't have helped, Mosquitto only queues QoS>=1
+    messages for an offline subscriber), waits briefly for Soliloquy's ack and reports what
+    ACTUALLY happened back to the user instead of just "the publish call didn't raise," and now
+    buffers an entry to a local file (`journal_pending.jsonl`, gitignored) when the BROKER itself
+    is unreachable (not just Soliloquy -- durable sessions can't help with that case, the
+    connection never even exists), flushing it automatically the next time the action runs.
+  - `core/voice_id.py` (new): pure-Python voice identification, no numpy/ML framework, matching
+    this codebase's existing hand-rolled-DSP style (see `core/audio.py`). Pitch via autocorrelation
+    + zero-crossing rate + RMS energy, averaged into a small per-person fingerprint.
+    `enroll_voice_plugin.py` (new) records a sample and saves a profile; `make_it_so.py`'s main
+    loop identifies the speaker on every turn and makes it available to other plugins via
+    `config["_identified_speaker"]`, which `journal_entry_plugin.py` now attaches to the MQTT
+    payload when present. Explicitly NOT a neural embedding model -- genuinely worse at telling
+    apart two similar-pitched voices than something like Resemblyzer would be, documented plainly
+    in `voice_id.py`'s own module docstring, not oversold.
+  - **Real, cross-repo, end-to-end verification**: `pip install paho-mqtt` into
+    makeItSoNumberOne's venv (still not installed there by default, same known gap as before,
+    documented in that repo's own history), enrolled a real (synthesized) voice profile,
+    identified it, ran the ACTUAL `JournalEntryPlugin.execute()` (not a mock) against the real
+    running Soliloquy MQTT listener, confirmed the entry landed in Soliloquy's real database with
+    the correct `speaker` attached, then did the same for an append-type message and confirmed the
+    merge. `python3 -m unittest discover -s tests` run in makeItSoNumberOne afterward (273 tests,
+    1 pre-existing unrelated failure -- `requests` isn't installed in that venv either, nothing to
+    do with this work) to confirm nothing broke.
+
 ## Right after this
 
 - [ ] Test the video-capture flow from a real phone (not just desktop browser + synthesized test

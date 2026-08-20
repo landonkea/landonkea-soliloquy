@@ -3,7 +3,9 @@ from datetime import datetime, timedelta, timezone
 
 import pytest
 
-from soliloquy.actions import add_entry, analyze_range, list_entries, report_range
+from soliloquy.actions import (
+    add_entry, analyze_range, append_or_add_entry, journaling_streak, list_entries, on_this_day, report_range,
+)
 from soliloquy.analyzer import AnalysisResult, NoEntriesError
 from soliloquy.entry import Entry
 from soliloquy.storage import EntryStore
@@ -27,9 +29,11 @@ class FakeAnalyzer:
             mood_notes="fake mood", key_topics=["fake"],
         )
         self.last_entries = None
+        self.last_instruction = None
 
-    def analyze(self, entries):
+    def analyze(self, entries, instruction=""):
         self.last_entries = entries
+        self.last_instruction = instruction
         if not entries:
             raise NoEntriesError("no entries")
         return self.result
@@ -130,6 +134,20 @@ def test_report_range_partner_audience_only_sees_entries_shared_with_partner():
         report_range(store, analyzer, days=7, audience="partner")
 
         assert [e.transcript for e in analyzer.last_entries] == ["shared with partner"]
+        assert "partner" in analyzer.last_instruction
+    finally:
+        store.close()
+
+
+def test_report_range_self_audience_passes_no_special_instruction():
+    store = EntryStore(TEST_DATABASE_URL)
+    try:
+        store.add(Entry(transcript="entry"))
+
+        analyzer = FakeAnalyzer()
+        report_range(store, analyzer, days=7, audience="self")
+
+        assert analyzer.last_instruction == ""
     finally:
         store.close()
 
@@ -164,5 +182,104 @@ def test_report_range_rejects_an_unknown_audience():
         store.add(Entry(transcript="entry"))
         with pytest.raises(ValueError):
             report_range(store, FakeAnalyzer(), days=7, audience="stranger")
+    finally:
+        store.close()
+
+
+# ── append_or_add_entry (MQTT "append to today") ────────────────────
+
+def test_append_or_add_entry_creates_a_new_entry_when_none_exists_today():
+    store = EntryStore(TEST_DATABASE_URL)
+    try:
+        entry, appended = append_or_add_entry(store, "first thought")
+
+        assert appended is False
+        assert entry.transcript == "first thought"
+        assert len(list_entries(store)) == 1
+    finally:
+        store.close()
+
+
+def test_append_or_add_entry_appends_to_a_recent_entry_from_today():
+    store = EntryStore(TEST_DATABASE_URL)
+    try:
+        first, _ = append_or_add_entry(store, "first thought")
+
+        second, appended = append_or_add_entry(store, "also, one more thing")
+
+        assert appended is True
+        assert second.id == first.id
+        assert second.transcript == "first thought also, one more thing"
+        assert len(list_entries(store)) == 1
+    finally:
+        store.close()
+
+
+def test_append_or_add_entry_creates_new_when_the_recent_entry_is_too_old():
+    store = EntryStore(TEST_DATABASE_URL)
+    try:
+        old = Entry(transcript="yesterday-ish", created_at=datetime.now(timezone.utc) - timedelta(minutes=90))
+        store.add(old)
+
+        entry, appended = append_or_add_entry(store, "new thought", within_minutes=60)
+
+        assert appended is False
+        assert entry.id != old.id
+        assert len(list_entries(store)) == 2
+    finally:
+        store.close()
+
+
+def test_append_or_add_entry_does_not_merge_across_different_speakers():
+    store = EntryStore(TEST_DATABASE_URL)
+    try:
+        append_or_add_entry(store, "from Landon", speaker="Landon")
+
+        entry, appended = append_or_add_entry(store, "from someone else", speaker="Someone Else")
+
+        assert appended is False
+        assert len(list_entries(store)) == 2
+    finally:
+        store.close()
+
+
+# ── journaling_streak ────────────────────────────────────────────────
+
+def test_journaling_streak_counts_distinct_days_with_at_least_one_entry():
+    store = EntryStore(TEST_DATABASE_URL)
+    try:
+        now = datetime.now(timezone.utc)
+        store.add(Entry(transcript="today", created_at=now))
+        store.add(Entry(transcript="yesterday", created_at=now - timedelta(days=1)))
+        store.add(Entry(transcript="also yesterday", created_at=now - timedelta(days=1, hours=1)))
+
+        journaled, window = journaling_streak(store, window_days=7)
+
+        assert journaled == 2
+        assert window == 7
+    finally:
+        store.close()
+
+
+def test_journaling_streak_is_zero_with_no_entries():
+    store = EntryStore(TEST_DATABASE_URL)
+    try:
+        journaled, window = journaling_streak(store, window_days=7)
+        assert journaled == 0
+    finally:
+        store.close()
+
+
+# ── on_this_day ──────────────────────────────────────────────────────
+
+def test_on_this_day_uses_todays_date_by_default():
+    store = EntryStore(TEST_DATABASE_URL)
+    try:
+        today = datetime.now(timezone.utc)
+        store.add(Entry(transcript="a year ago today", created_at=today.replace(year=today.year - 1)))
+
+        results = on_this_day(store)
+
+        assert [e.transcript for e in results] == ["a year ago today"]
     finally:
         store.close()

@@ -8,8 +8,45 @@
     {{ tip }}
   </div>
 
+  {% if not query and not selected_tag %}
+    <p class="streak-line">Journaled {{ journaled_days }} of the last {{ streak_window }} days.</p>
+  {% endif %}
+
+  <form method="get" action="/" class="search-form">
+    <input type="text" name="q" value="{{ query }}" placeholder="Search entries...">
+    {% if all_tags %}
+      <select name="tag" onchange="this.form.submit()">
+        <option value="">All tags</option>
+        {% for t in all_tags %}
+          <option value="{{ t }}" {% if t == selected_tag %}selected{% endif %}>{{ t }}</option>
+        {% endfor %}
+      </select>
+    {% endif %}
+    <button type="submit">Search</button>
+    {% if query or selected_tag %}<a href="/" class="btn secondary">Clear</a>{% endif %}
+  </form>
+
+  {% if query %}
+    <p class="entry-meta">{{ entries | length }} result(s) for "{{ query }}".</p>
+  {% elif selected_tag %}
+    <p class="entry-meta">{{ entries | length }} entr{{ "y" if entries | length == 1 else "ies" }} tagged "{{ selected_tag }}".</p>
+  {% endif %}
+
+  {% if on_this_day_entries %}
+    <div class="card">
+      <div class="prompt-label" style="margin-bottom: 0.5rem;">On this day</div>
+      {% for entry in on_this_day_entries %}
+        <p class="entry-meta">{{ entry.created_at }}</p>
+        <p>{{ entry.transcript }}</p>
+      {% endfor %}
+    </div>
+  {% endif %}
+
   {% if not entries %}
-    <p class="empty-state">No entries yet. <a href="/new">Add one.</a></p>
+    <p class="empty-state">
+      {% if query or selected_tag %}No matching entries.
+      {% else %}No entries yet. <a href="/new">Add one.</a>{% endif %}
+    </p>
   {% endif %}
 
   {% for entry in entries %}
@@ -23,6 +60,16 @@
         <button type="button" class="secondary" onclick="cancelEditTranscript('{{ entry.id }}')">Cancel</button>
       </div>
       <button type="button" class="secondary" id="edit-btn-{{ entry.id }}" onclick="startEditTranscript('{{ entry.id }}')">Edit transcript</button>
+
+      <div class="tag-row" id="tag-display-{{ entry.id }}">
+        {% for t in entry.tags %}<a href="/?tag={{ t }}" class="tag-chip">{{ t }}</a>{% endfor %}
+        <button type="button" class="secondary tag-edit-btn" onclick="startEditTags('{{ entry.id }}')">Edit tags</button>
+      </div>
+      <div id="tag-edit-{{ entry.id }}" style="display: none; margin: 0.5rem 0;">
+        <input type="text" id="tag-input-{{ entry.id }}" value="{{ entry.tags | join(', ') }}" placeholder="comma, separated, tags">
+        <button type="button" onclick="saveTags('{{ entry.id }}')">Save</button>
+        <button type="button" class="secondary" onclick="cancelEditTags('{{ entry.id }}')">Cancel</button>
+      </div>
 
       {% if entry.audio_path %}
         <div class="media-with-volume">
@@ -110,6 +157,30 @@
         statusEl.className = "status ok";
       } else {
         statusEl.textContent = "Could not save -- try again.";
+        statusEl.className = "status error";
+      }
+    }
+
+    function startEditTags(entryId) {
+      document.getElementById(`tag-display-${entryId}`).style.display = "none";
+      document.getElementById(`tag-edit-${entryId}`).style.display = "block";
+    }
+
+    function cancelEditTags(entryId) {
+      document.getElementById(`tag-display-${entryId}`).style.display = "flex";
+      document.getElementById(`tag-edit-${entryId}`).style.display = "none";
+    }
+
+    async function saveTags(entryId) {
+      const statusEl = document.getElementById(`status-${entryId}`);
+      const tags = document.getElementById(`tag-input-${entryId}`).value;
+      const form = new FormData();
+      form.set("tags", tags);
+      const response = await fetch(`/entries/${entryId}/tags`, { method: "POST", body: form });
+      if (response.ok) {
+        location.reload();  // simplest way to re-render the tag chips with links
+      } else {
+        statusEl.textContent = "Could not save tags -- try again.";
         statusEl.className = "status error";
       }
     }

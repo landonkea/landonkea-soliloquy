@@ -1,0 +1,52 @@
+{% extends "base.html" %}
+{% block title %}Saved reports — Soliloquy{% endblock %}
+{% block content %}
+  <h1>Saved reports</h1>
+
+  <div class="tip-box">
+    <div class="tip-label">A little something</div>
+    {{ tip }}
+  </div>
+
+  <p>A monthly report saves here automatically (see the Report page for a one-off manual save
+     too). Each one can get a time-limited link to hand to someone without giving them an
+     account here.</p>
+
+  {% if not reports %}
+    <p class="empty-state">No saved reports yet.</p>
+  {% endif %}
+
+  {% for report in reports %}
+    <div class="entry" id="report-{{ report.id }}">
+      <div class="entry-meta">
+        {{ report.created_at.isoformat() }} — last {{ report.days }} days —
+        audience: {{ report.audience }} — {{ report.source }}
+      </div>
+      <button type="button" class="secondary" onclick="makeShareLink('{{ report.id }}')">Get share link</button>
+      <div class="status" id="status-{{ report.id }}"></div>
+    </div>
+  {% endfor %}
+
+  <script>
+    async function makeShareLink(reportId) {
+      const statusEl = document.getElementById(`status-${reportId}`);
+      statusEl.textContent = "Creating link...";
+      statusEl.className = "status";
+
+      const form = new FormData();
+      form.set("expires_in_days", "7");
+      const response = await fetch(`/reports/saved/${reportId}/share-link`, { method: "POST", body: form });
+
+      if (!response.ok) {
+        const detail = await response.json().catch(() => ({}));
+        statusEl.textContent = detail.detail || `Could not create a link (${response.status})`;
+        statusEl.className = "status error";
+        return;
+      }
+
+      const data = await response.json();
+      statusEl.innerHTML = `Link (expires in ${data.expires_in_days} days): <a href="${data.url}" target="_blank">${data.url}</a>`;
+      statusEl.className = "status ok";
+    }
+  </script>
+{% endblock %}

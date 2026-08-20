@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import logging
 import os
+import secrets
 import tempfile
 import uuid
 from contextlib import asynccontextmanager
@@ -25,24 +26,30 @@ from pathlib import Path
 from typing import Optional
 
 from fastapi import Depends, FastAPI, File, Form, HTTPException, Request, Response, UploadFile
-from fastapi.responses import HTMLResponse, StreamingResponse
+from fastapi.responses import HTMLResponse, RedirectResponse, StreamingResponse
+from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
+from starlette.middleware.sessions import SessionMiddleware
 
-from ..actions import AUDIENCES, DEFAULT_DATABASE_URL, add_entry, list_entries, report_range
+from .. import auth
+from ..actions import AUDIENCES, DEFAULT_DATABASE_URL, add_entry, journaling_streak, list_entries, on_this_day, report_range
 from ..analysis_store import AnalysisSnapshotStore
 from ..analyzer import NoEntriesError, get_default_analyzer
 from ..deployment_mode import describe_deployment_mode
 from ..entry import Entry
+from ..mood_chart import render_mood_trend_svg
 from ..mqtt_bridge import start_mqtt_listener
 from ..object_storage import ObjectStore
 from ..prompts import get_daily_prompt
 from ..tips import get_daily_tip
 from ..report import FORMATS, build_report_content, format_html, format_markdown, format_pdf, format_text
+from ..report_store import DEFAULT_SHARE_LINK_DAYS, SavedReport, SavedReportStore, make_share_token, resolve_share_token
 from ..scheduler import start_scheduler
 from ..storage import EntryStore
 from .. import noise_reduction
 from ..noise_reduction import isolate_voice_and_normalize
 from ..transcriber import WhisperTranscriber
+from ..transcript_cleanup import clean_transcript
 from ..video import extract_audio
 
 logger = logging.getLogger(__name__)
@@ -51,6 +58,7 @@ logger = logging.getLogger(__name__)
 @asynccontextmanager
 async def _lifespan(app: FastAPI):
     print(describe_deployment_mode(), flush=True)
+    print(auth.describe_auth_mode(), flush=True)
 
     # Must happen on the main thread, before any request can reach a
     # worker thread -- see noise_reduction.preload()'s docstring.
@@ -62,6 +70,11 @@ async def _lifespan(app: FastAPI):
     scheduler = None
     if os.environ.get("SOLILOQUY_DISABLE_SCHEDULER") != "1":
         scheduler = start_scheduler()
+    # Stashed on app.state (not just this local var) so the /analysis
+    # route -- which runs long after lifespan's own scope has moved on
+    # to `yield` -- can still ask it "when's the next run" (see
+    # analysis_page's next_run_at).
+    app.state.scheduler = scheduler
 
     mqtt_client = None
     if os.environ.get("SOLILOQUY_DISABLE_MQTT") != "1":
@@ -78,6 +91,30 @@ async def _lifespan(app: FastAPI):
 
 app = FastAPI(title="Soliloquy", lifespan=_lifespan)
 templates = Jinja2Templates(directory=str(Path(__file__).parent / "templates"))
+
+app.mount("/static", StaticFiles(directory=str(Path(__file__).parent / "static")), name="static")
+
+# Registered in this order deliberately, not the order they run in --
+# Starlette's add_middleware() prepends, so the LAST one added ends up
+# OUTERMOST (runs first on every request). AuthMiddleware.dispatch()
+# reads request.session, which only exists once SessionMiddleware has
+# run, so SessionMiddleware has to be the outer one, meaning it has to
+# be added second. Get this backwards and every request 500s with
+# "SessionMiddleware must be installed to access request.session".
+#
+# SessionMiddleware itself is unconditional (request.session has to
+# exist for base.html's logout-button check and the login route either
+# way); the actual gate is AuthMiddleware, which no-ops entirely when
+# AUTH_PASSWORD isn't set -- see auth.py. $SESSION_SECRET_KEY should be
+# a real fixed value in .env so sessions survive a restart; falling
+# back to a random one here just means "everyone's logged out next
+# restart" instead of refusing to start over a missing dev convenience.
+app.add_middleware(auth.AuthMiddleware)
+app.add_middleware(
+    SessionMiddleware,
+    secret_key=os.environ.get("SESSION_SECRET_KEY") or secrets.token_hex(32),
+    same_site="lax",
+)
 
 
 def _masked_key(value: str) -> str:
@@ -107,6 +144,14 @@ def get_analysis_store():
     finally:
         store.close()
 
+
+def get_saved_report_store():
+    store = SavedReportStore(os.environ.get("DATABASE_URL", DEFAULT_DATABASE_URL))
+    try:
+        yield store
+    finally:
+        store.close()
+
 _object_store: Optional[ObjectStore] = None
 
 
@@ -124,7 +169,10 @@ def get_store():
     # A fresh connection per request, same as `with EntryStore(...) as
     # store:` in cli.py -- psycopg connections aren't safe to share
     # across concurrently-handled requests.
-    store = EntryStore(os.environ.get("DATABASE_URL", DEFAULT_DATABASE_URL))
+    store = EntryStore(
+        os.environ.get("DATABASE_URL", DEFAULT_DATABASE_URL),
+        encryption_key=os.environ.get("TRANSCRIPT_ENCRYPTION_KEY") or None,
+    )
     try:
         yield store
     finally:
@@ -140,6 +188,8 @@ def _entry_to_dict(entry: Entry) -> dict:
         "video_path": entry.video_path,
         "shareable_with_partner": entry.shareable_with_partner,
         "shareable_with_provider": entry.shareable_with_provider,
+        "tags": entry.tags,
+        "speaker": entry.speaker,
         "word_count": entry.word_count,
     }
 
@@ -167,7 +217,7 @@ def _upload_and_transcribe_audio(object_store: ObjectStore, audio_path: str) -> 
     cleaned_path = f"{audio_path}.cleaned.wav"
     isolate_voice_and_normalize(audio_path, cleaned_path)
     try:
-        transcript = WhisperTranscriber().transcribe(cleaned_path)
+        transcript = clean_transcript(WhisperTranscriber().transcribe(cleaned_path))
         key = object_store.upload_file(cleaned_path, f"audio/{uuid.uuid4()}.wav")
     finally:
         os.remove(cleaned_path)
@@ -245,6 +295,22 @@ def share_entry(
     updated = store.update_sharing(
         entry_id, shareable_with_partner=partner, shareable_with_provider=provider
     )
+    if not updated:
+        raise HTTPException(status_code=404, detail=f"No entry found with id {entry_id}")
+    return _entry_to_dict(store.get(entry_id))
+
+
+@app.post("/entries/{entry_id}/tags")
+def update_tags(
+    entry_id: str,
+    tags: str = Form(""),
+    store: EntryStore = Depends(get_store),
+):
+    """`tags` is a comma-separated string from the entries page's plain
+    text input -- no separate tag-picker widget, splitting/trimming
+    happens here rather than pushing that parsing into JS."""
+    tag_list = [t.strip() for t in tags.split(",") if t.strip()]
+    updated = store.update_tags(entry_id, tag_list)
     if not updated:
         raise HTTPException(status_code=404, detail=f"No entry found with id {entry_id}")
     return _entry_to_dict(store.get(entry_id))
@@ -367,16 +433,96 @@ def get_media(key: str, object_store: ObjectStore = Depends(get_object_store)):
     return StreamingResponse(stream(), media_type=media_type)
 
 
+@app.get("/healthz")
+def healthz():
+    # Deliberately exempt from AuthMiddleware (see auth.py) -- the
+    # Dockerfile's HEALTHCHECK curls this with no session cookie, and
+    # a login redirect there would make Docker think a healthy
+    # container was unhealthy the moment AUTH_PASSWORD gets set.
+    return {"status": "ok"}
+
+
+def _safe_next(next_path: str) -> str:
+    # Only ever redirect somewhere inside this app. "//evil.com" is a
+    # valid-looking relative URL to a browser (protocol-relative), so
+    # a single leading "/" isn't enough on its own to rule out an open
+    # redirect through a crafted ?next= value.
+    if next_path.startswith("/") and not next_path.startswith("//"):
+        return next_path
+    return "/"
+
+
+# ── Auth -- see auth.py for why this exists and how it's gated.
+
+@app.get("/login", response_class=HTMLResponse)
+def login_page(request: Request, next: str = "/"):
+    return templates.TemplateResponse(request, "login.html", {"next": _safe_next(next), "error": None})
+
+
+@app.post("/login")
+def login_submit(request: Request, password: str = Form(...), next: str = Form("/")):
+    next_path = _safe_next(next)
+    client_id = request.client.host if request.client else "unknown"
+
+    if auth.is_locked_out(client_id):
+        return templates.TemplateResponse(
+            request, "login.html",
+            {"next": next_path, "error": "Too many attempts. Wait 30 seconds and try again."},
+            status_code=429,
+        )
+    if not auth.check_password(password):
+        auth.record_failed_attempt(client_id)
+        return templates.TemplateResponse(
+            request, "login.html", {"next": next_path, "error": "Wrong password."}, status_code=401,
+        )
+
+    auth.clear_failed_attempts(client_id)
+    request.session["authenticated"] = True
+    return RedirectResponse(url=next_path, status_code=303)
+
+
+@app.post("/logout")
+def logout(request: Request):
+    request.session.clear()
+    return RedirectResponse(url="/login", status_code=303)
+
+
 # ── HTML pages -- server-rendered, call the same functions the JSON
 # API routes above call. Forms on these pages submit to the JSON API
 # routes above via a few lines of inline fetch() (see the templates),
 # not a separate frontend framework/build step.
 
 @app.get("/", response_class=HTMLResponse)
-def entries_page(request: Request, store: EntryStore = Depends(get_store)):
-    entries = list(reversed(list_entries(store)))  # newest first for browsing
+def entries_page(
+    request: Request, q: str = "", tag: str = "", store: EntryStore = Depends(get_store),
+):
+    q = q.strip()
+    tag = tag.strip()
+    if q:
+        entries = store.search(q)  # already newest-first, see EntryStore.search
+    elif tag:
+        entries = store.by_tag(tag)  # already newest-first, see EntryStore.by_tag
+    else:
+        entries = list(reversed(list_entries(store)))  # newest first for browsing
+
+    journaled_days, streak_window = journaling_streak(store)
+
     return templates.TemplateResponse(
-        request, "entries.html", {"entries": [_entry_to_dict(e) for e in entries], "tip": get_daily_tip()}
+        request, "entries.html",
+        {
+            "entries": [_entry_to_dict(e) for e in entries],
+            "tip": get_daily_tip(),
+            "query": q,
+            "selected_tag": tag,
+            "all_tags": store.all_tags(),
+            # "On this day" and the streak line are about the whole
+            # journal, not a search/filter result -- showing them
+            # underneath a search wouldn't make sense, so both are
+            # only computed/shown on the unfiltered view.
+            "on_this_day_entries": [_entry_to_dict(e) for e in on_this_day(store)] if not (q or tag) else [],
+            "journaled_days": journaled_days,
+            "streak_window": streak_window,
+        },
     )
 
 
@@ -393,7 +539,99 @@ def report_page(request: Request):
 @app.get("/analysis", response_class=HTMLResponse)
 def analysis_page(request: Request, snapshot_store: AnalysisSnapshotStore = Depends(get_analysis_store)):
     snapshots = snapshot_store.recent(limit=10)
+    chart_snapshots = snapshot_store.recent(limit=20)
     return templates.TemplateResponse(
         request, "analysis.html",
-        {"snapshots": snapshots, "api_keys": _analyzer_key_status(), "tip": get_daily_tip()},
+        {
+            "snapshots": snapshots,
+            "api_keys": _analyzer_key_status(),
+            "tip": get_daily_tip(),
+            # render_mood_trend_svg wants oldest-first; recent() is
+            # newest-first, hence the reverse.
+            "mood_chart_svg": render_mood_trend_svg(list(reversed(chart_snapshots))),
+            "next_run_at": _next_analysis_run(request),
+        },
     )
+
+
+def _next_analysis_run(request: Request):
+    scheduler = getattr(request.app.state, "scheduler", None)
+    if scheduler is None:
+        return None
+    job = scheduler.get_job("analysis")
+    return job.next_run_time if job else None
+
+
+# ── Saved reports + expiring signed share links (FEATURE_IDEAS.md
+# items 11 and 13) -- see report_store.py for the design.
+
+@app.get("/reports/saved", response_class=HTMLResponse)
+def saved_reports_page(request: Request, report_store: SavedReportStore = Depends(get_saved_report_store)):
+    return templates.TemplateResponse(
+        request, "saved_reports.html", {"reports": report_store.recent(), "tip": get_daily_tip()},
+    )
+
+
+@app.post("/reports/save")
+def save_report(
+    days: int = Form(30),
+    audience: str = Form("self"),
+    store: EntryStore = Depends(get_store),
+    report_store: SavedReportStore = Depends(get_saved_report_store),
+):
+    """Manually save a report for later sharing, same idea as the
+    scheduled monthly one (see scheduler.run_scheduled_monthly_report)
+    but on demand and for any audience/day range, not just the fixed
+    30-day "self" default."""
+    if audience not in AUDIENCES:
+        raise HTTPException(status_code=400, detail=f"Unknown audience {audience!r}, must be one of {AUDIENCES}")
+    try:
+        result, entries = report_range(store, get_default_analyzer(), days, audience)
+    except NoEntriesError:
+        raise HTTPException(status_code=404, detail=f"No entries for audience '{audience}' in the last {days} days.")
+    except RuntimeError as exc:
+        raise HTTPException(status_code=502, detail=str(exc))
+
+    content = build_report_content(result, entries, audience, days)
+    saved = SavedReport(days=days, audience=audience, content=format_markdown(content), source="manual")
+    report_store.add(saved)
+    return {"id": saved.id}
+
+
+@app.post("/reports/saved/{report_id}/share-link")
+def create_share_link(
+    request: Request,
+    report_id: str,
+    expires_in_days: int = Form(DEFAULT_SHARE_LINK_DAYS),
+    report_store: SavedReportStore = Depends(get_saved_report_store),
+):
+    if report_store.get(report_id) is None:
+        raise HTTPException(status_code=404, detail=f"No saved report with id {report_id}")
+
+    secret_key = os.environ.get("SESSION_SECRET_KEY")
+    if not secret_key:
+        raise HTTPException(
+            status_code=500,
+            detail="SESSION_SECRET_KEY must be set to create share links -- see .env.example.",
+        )
+    token = make_share_token(report_id, secret_key, expires_in_days)
+    return {"url": str(request.url_for("shared_report", token=token)), "expires_in_days": expires_in_days}
+
+
+@app.get("/reports/shared/{token}", response_class=HTMLResponse, name="shared_report")
+def shared_report(request: Request, token: str, report_store: SavedReportStore = Depends(get_saved_report_store)):
+    # Deliberately NOT behind AuthMiddleware (see auth.py's exempt
+    # paths) -- the entire point is handing this link to someone
+    # (a therapist, a partner) who doesn't have -- and shouldn't need
+    # -- a login to this app. The signed, expiring token IS the access
+    # control for this one route.
+    secret_key = os.environ.get("SESSION_SECRET_KEY")
+    report_id = resolve_share_token(token, secret_key) if secret_key else None
+    if not report_id:
+        raise HTTPException(status_code=404, detail="This share link is invalid or has expired.")
+
+    report = report_store.get(report_id)
+    if report is None:
+        raise HTTPException(status_code=404, detail="This report no longer exists.")
+
+    return templates.TemplateResponse(request, "shared_report.html", {"report": report})

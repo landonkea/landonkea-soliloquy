@@ -1,0 +1,33 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Log in - Soliloquy</title>
+  <meta name="theme-color" content="#e08a4b">
+  <link rel="manifest" href="/static/manifest.json">
+  <link rel="icon" href="/static/favicon.ico" sizes="any">
+  <link rel="icon" href="/static/icon.svg" type="image/svg+xml">
+  <link rel="apple-touch-icon" href="/static/apple-touch-icon.png">
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+  <div class="login-wrap">
+    <div class="card login-card">
+      <img src="/static/icon.svg" alt="" class="login-icon">
+      <h1>Soliloquy</h1>
+      <form method="post" action="/login">
+        <input type="hidden" name="next" value="{{ next }}">
+        <label>
+          Password
+          <input type="password" name="password" autofocus required>
+        </label>
+        <button type="submit">Log in</button>
+        {% if error %}
+        <p class="status error">{{ error }}</p>
+        {% endif %}
+      </form>
+    </div>
+  </div>
+</body>
+</html>

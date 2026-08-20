@@ -128,22 +128,73 @@ fact. The recording is the whole interaction.
   `src/soliloquy/report.py`) rendered four ways: plain text, real Markdown (renders nicely on
   GitHub/Obsidian/Notion), a self-contained HTML page, and a PDF (via `fpdf2`, no system-level
   dependencies), the most natural format for actually handing to a therapist or printing.
+- **Password gate** (`src/soliloquy/auth.py`): a single-user login, off by default, no accounts,
+  no third-party identity provider, see "Password protection" above.
+- **Dark mode, automatic**: the whole app follows the device's own light/dark setting
+  (`prefers-color-scheme`, no manual toggle needed or built), see `static/style.css`. Default
+  light palette is a diffused orange with a soft yellow sunburst glow behind the header; dark
+  palette is the same variables, different values, not a separate design.
+- **Installable as a PWA**: a real `manifest.json` + icon set (`static/`), "Add to Home Screen"
+  on a phone gives Soliloquy its own icon and launches it full-screen like a native app, no
+  browser chrome, which matters for something meant to be reached for daily.
+- **Container-first**: `docker compose up -d --build` is now the whole setup, see "Quick start"
+  above, the Rust toolchain DeepFilterNet's native dependency needs now lives inside the image
+  (`Dockerfile`) instead of being a manual host prerequisite.
+- **Search, tags, "on this day," a streak line**: a real Postgres full-text search box and a tag
+  filter on the Entries page (`EntryStore.search()`/`.by_tag()`), entries from this same
+  month/day in past years surfaced quietly at the top, and an honest "journaled N of the last 7
+  days" line, not a gamified streak counter.
+- **Encrypted transcripts at rest, without losing search**: opt-in (`$TRANSCRIPT_ENCRYPTION_KEY`),
+  Fernet-encrypted `transcript` column, with a separate search index built from plaintext at
+  write time so full-text search keeps working. See `storage.py`'s module docstring for the real
+  design (and its honest limits).
+- **A mood trend chart, per-audience report framing, saved + shareable reports**: the analyzer
+  now returns an optional 1-10 mood score, plotted as a small inline SVG on the Analysis page;
+  partner/provider reports get audience-specific framing in the analysis prompt, not just
+  audience-filtered entries; and a report (generated manually, or automatically once a month) can
+  get a signed, time-limited link to hand to someone with no account here at all.
+- **The full MQTT bridge, both directions**: writes get a real ack back
+  (`$MQTT_TOPIC/ack`), "also, one more thing" appends to today's entry instead of creating a new
+  one, "what have I been journaling about" works as a spoken question
+  (`$MQTT_TOPIC/query`/`/query/response`), and the listener's durable session means an entry sent
+  while Soliloquy was asleep gets delivered once it wakes up, not dropped. The
+  `landonkea-makeItSoNumberOne` side got the matching upgrades too: QoS 1 (required for the
+  durability above to actually work), a local retry buffer for when the broker itself is
+  unreachable, and real (pure-Python, no ML framework) voice identification so entries from
+  different household members get labeled automatically.
 
 **Next:** see `CHECKLIST.md` for the full status and what's after this.
 
 ## Quick start
 
-**Easiest way (macOS): double-click `start.command`** in Finder (or run `./start.command` from a
-terminal). It handles everything, starting Docker services, creating the Python environment,
-installing dependencies, installing `ffmpeg` if missing, and starting the web app, and is safe
-to run again any time (each step is a no-op if already done). Leave the window it opens open
-while you're using the app; closing it (or Ctrl+C) stops the server. It prints both the
-`localhost` address and this machine's LAN address (for using it from your phone).
-
-Manual equivalent, if you'd rather run it yourself:
+**Easiest way, everything in a container, nothing installed on your machine but Docker:**
 
 ```bash
-docker compose up -d       # local Postgres (port 5433), MinIO (port 9000), Mosquitto (port 1883)
+cp .env.example .env       # fill in AUTH_PASSWORD/SESSION_SECRET_KEY if this'll be reachable
+                            # by anything other than just you, see .env.example's own notes
+docker compose up -d --build
+```
+
+That single command builds and starts all four pieces, Postgres, MinIO, Mosquitto, and the app
+itself, with hot reload (edit `src/`, the running container picks it up, no rebuild). No host
+Python, no Homebrew `ffmpeg`, no Rust toolchain to install by hand, all of that now lives inside
+the image (see `Dockerfile`). Open `http://localhost:8000`. `docker compose logs -f app` to watch
+it, `docker compose down` to stop everything.
+
+**macOS, if you'd rather run the app directly on the host** (skips the image build/rebuild cycle
+entirely, which can matter for the transcription/noise-reduction code paths specifically, a
+container rebuild after every edit there is slower than the host-Python loop): double-click
+`start.command` in Finder (or run `./start.command` from a terminal). It handles everything,
+starting the same Docker services (minus the app container this time), creating the Python
+environment, installing dependencies, installing `ffmpeg` if missing, and starting the web app,
+and is safe to run again any time (each step is a no-op if already done). Leave the window it
+opens open while you're using the app; closing it (or Ctrl+C) stops the server. It prints both
+the `localhost` address and this machine's LAN address (for using it from your phone).
+
+Manual equivalent of `start.command`, if you'd rather run it yourself:
+
+```bash
+docker compose up -d postgres minio mosquitto   # skip the app container this time
 python3 -m venv .venv && source .venv/bin/activate
 pip install -e ".[dev,web,transcribe]"
 # macOS also needs: brew install ffmpeg   (used to extract audio from uploaded video, and by the
@@ -158,11 +209,21 @@ Then open `http://localhost:8000` in a browser: **Entries** to browse, **New ent
 typed/audio/video entry, **Report** to generate a shareable write-up, **Analysis** to see
 automatic background summaries.
 
-By default the app points at the local docker-compose Postgres
+Running on the host (not in the app container) points at the local docker-compose Postgres
 (`postgresql://soliloquy:soliloquy@localhost:5433/soliloquy`), MinIO
 (`http://localhost:9000`, bucket `soliloquy`), and Mosquitto (`localhost:1883`), override with
 the `DATABASE_URL`/`S3_*`/`MQTT_*` environment variables to point at anything else, including a
-managed cloud database later. See `.env.example` for the full list.
+managed cloud database later. See `.env.example` for the full list. Inside `docker compose`,
+those three already point at the right containers automatically, see `docker-compose.yml`'s
+`app` service.
+
+## Password protection
+
+Off by default (see `src/soliloquy/auth.py`) so a fresh clone with no `.env` just works. Set
+`AUTH_PASSWORD` (and a fixed `SESSION_SECRET_KEY`, see `.env.example`) before this is reachable
+by anything other than your own machine, a phone on the same LAN, a real deploy, all count.
+Nothing fancy: one password, a signed session cookie, a short lockout after repeated wrong
+attempts, no accounts, no third-party identity provider, entirely self-contained and free.
 
 ## Backups
 

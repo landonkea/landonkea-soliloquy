@@ -29,6 +29,15 @@
 # for one of these audiences, whenever they're actually getting ready
 # to share something -- never assumed at capture time. See
 # cli.py's `share` command and `report --audience`.
+#
+# tags: freeform, user/analysis-assigned topic labels (e.g. "work",
+# "family") -- lets the Entries page filter to "everything about X"
+# directly instead of only ever reading chronologically or searching.
+#
+# speaker: who said this, for households with more than one journaler
+# sharing the same MQTT bridge (see mqtt_bridge.py) -- None means
+# "unknown/not applicable" (every entry made through the web UI, and
+# any MQTT entry from before makeItSoNumberOne could identify voices).
 # ───────────────────────────────────────────────────────────────────
 
 from __future__ import annotations
@@ -47,6 +56,8 @@ class Entry:
     video_path: Optional[str] = None
     shareable_with_partner: bool = False
     shareable_with_provider: bool = False
+    tags: list[str] = field(default_factory=list)
+    speaker: Optional[str] = None
     id: str = field(default_factory=lambda: str(uuid.uuid4()))
 
     @property

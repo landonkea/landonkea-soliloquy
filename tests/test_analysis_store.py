@@ -1,5 +1,6 @@
 import os
 
+import psycopg
 import pytest
 
 from soliloquy.analysis_store import AnalysisSnapshot, AnalysisSnapshotStore
@@ -65,3 +66,34 @@ def test_recent_returns_newest_first_and_respects_limit(store):
     recent = store.recent(limit=2)
 
     assert [s.result.summary for s in recent] == ["c", "b"]
+
+
+def test_mood_score_round_trips_when_present(store):
+    snapshot = AnalysisSnapshot(
+        days=1, audience="self",
+        result=AnalysisResult(entry_count=1, total_word_count=5, summary="s", mood_notes="m", key_topics=[], mood_score=7),
+    )
+    store.add(snapshot)
+
+    assert store.latest().result.mood_score == 7
+
+
+def test_mood_score_is_none_when_not_provided(store):
+    store.add(_snapshot())
+
+    assert store.latest().result.mood_score is None
+
+
+def test_a_snapshots_table_created_before_mood_score_existed_still_opens_and_defaults_to_none():
+    conn = psycopg.connect(TEST_DATABASE_URL, autocommit=True)
+    conn.execute("DROP TABLE IF EXISTS analysis_snapshots")
+    conn.execute(
+        "CREATE TABLE analysis_snapshots (id TEXT PRIMARY KEY, created_at TEXT NOT NULL, days INTEGER NOT NULL, "
+        "audience TEXT NOT NULL, entry_count INTEGER NOT NULL, total_word_count INTEGER NOT NULL, "
+        "summary TEXT NOT NULL, mood_notes TEXT NOT NULL, key_topics TEXT NOT NULL)"
+    )
+    conn.close()
+
+    with AnalysisSnapshotStore(TEST_DATABASE_URL) as s:
+        s.add(_snapshot())
+        assert s.latest().result.mood_score is None

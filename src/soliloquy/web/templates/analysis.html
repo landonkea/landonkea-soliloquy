@@ -10,7 +10,16 @@
 
   <p>Runs automatically in the background (every few hours by default -- see
      <code>$ANALYSIS_INTERVAL_HOURS</code>), so there's usually something here without asking for
-     it. For a specific date range or a shareable write-up instead, use <a href="/report">Report</a>.</p>
+     it.
+     {% if next_run_at %}Next run: {{ next_run_at.strftime("%b %-d, %-I:%M %p") }}.{% endif %}
+     For a specific date range or a shareable write-up instead, use <a href="/report">Report</a>.</p>
+
+  {% if mood_chart_svg %}
+    <div class="card">
+      <div class="prompt-label" style="margin-bottom: 0.5rem;">Mood trend</div>
+      {{ mood_chart_svg | safe }}
+    </div>
+  {% endif %}
 
   <div class="card">
     <div class="prompt-label" style="margin-bottom: 0.5rem;">Analysis provider API keys</div>

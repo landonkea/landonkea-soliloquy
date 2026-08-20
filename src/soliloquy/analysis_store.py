@@ -37,7 +37,16 @@ CREATE TABLE IF NOT EXISTS analysis_snapshots (
 CREATE INDEX IF NOT EXISTS idx_analysis_snapshots_created_at ON analysis_snapshots (created_at DESC);
 """
 
-_COLUMNS = "id, created_at, days, audience, entry_count, total_word_count, summary, mood_notes, key_topics"
+# mood_score didn't exist when this table was first created -- same
+# _ensure_columns() pattern storage.py already established, not a
+# real migration system, fine at this size (see storage.py's own
+# comment on that tradeoff).
+_OPTIONAL_COLUMNS = {"mood_score": "INTEGER"}
+
+_COLUMNS = (
+    "id, created_at, days, audience, entry_count, total_word_count, summary, mood_notes, "
+    "key_topics, mood_score"
+)
 
 
 @dataclass
@@ -53,6 +62,17 @@ class AnalysisSnapshotStore:
     def __init__(self, database_url: str):
         self._conn = psycopg.connect(database_url, autocommit=True)
         self._conn.execute(SCHEMA)
+        self._ensure_columns()
+
+    def _ensure_columns(self) -> None:
+        existing = {
+            row[0] for row in self._conn.execute(
+                "SELECT column_name FROM information_schema.columns WHERE table_name = 'analysis_snapshots'"
+            ).fetchall()
+        }
+        for column, ddl_type in _OPTIONAL_COLUMNS.items():
+            if column not in existing:
+                self._conn.execute(f"ALTER TABLE analysis_snapshots ADD COLUMN {column} {ddl_type}")
 
     def __enter__(self) -> "AnalysisSnapshotStore":
         return self
@@ -62,7 +82,7 @@ class AnalysisSnapshotStore:
 
     def add(self, snapshot: AnalysisSnapshot) -> None:
         self._conn.execute(
-            f"INSERT INTO analysis_snapshots ({_COLUMNS}) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)",
+            f"INSERT INTO analysis_snapshots ({_COLUMNS}) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)",
             (
                 snapshot.id,
                 snapshot.created_at.isoformat(),
@@ -73,6 +93,7 @@ class AnalysisSnapshotStore:
                 snapshot.result.summary,
                 snapshot.result.mood_notes,
                 json.dumps(snapshot.result.key_topics),
+                snapshot.result.mood_score,
             ),
         )
 
@@ -102,7 +123,7 @@ class AnalysisSnapshotStore:
     @staticmethod
     def _row_to_snapshot(row: tuple) -> AnalysisSnapshot:
         (snap_id, created_at, days, audience, entry_count, total_word_count,
-         summary, mood_notes, key_topics) = row
+         summary, mood_notes, key_topics, mood_score) = row
         return AnalysisSnapshot(
             id=snap_id,
             created_at=datetime.fromisoformat(created_at),
@@ -114,5 +135,6 @@ class AnalysisSnapshotStore:
                 summary=summary,
                 mood_notes=mood_notes,
                 key_topics=json.loads(key_topics),
+                mood_score=mood_score,
             ),
         )

@@ -9,7 +9,9 @@
   </div>
 
   <p>Generates a readable write-up from entries in the date range. "self" includes everything;
-     "partner"/"provider" only include entries explicitly marked shared with that audience.</p>
+     "partner"/"provider" only include entries explicitly marked shared with that audience.
+     See <a href="/reports/saved">saved reports</a> for anything saved for sharing (a monthly one
+     saves automatically) and to get a time-limited link.</p>
 
   <form id="report-form">
     <label>Days back
@@ -31,6 +33,7 @@
       </select>
     </label>
     <button type="submit">Generate</button>
+    <button type="button" class="secondary" onclick="saveForSharing()">Save for sharing</button>
     <div class="status" id="report-status"></div>
   </form>
 
@@ -96,5 +99,23 @@
         outputEl.appendChild(embed);
       }
     });
+
+    async function saveForSharing() {
+      statusEl.textContent = "Saving...";
+      statusEl.className = "status";
+
+      const body = new FormData(form);
+      const response = await fetch("/reports/save", { method: "POST", body });
+
+      if (!response.ok) {
+        const detail = await response.json().catch(() => ({}));
+        statusEl.textContent = detail.detail || `Could not save (${response.status})`;
+        statusEl.className = "status error";
+        return;
+      }
+
+      statusEl.innerHTML = 'Saved. Get a share link from <a href="/reports/saved">Saved reports</a>.';
+      statusEl.className = "status ok";
+    }
   </script>
 {% endblock %}

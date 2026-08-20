@@ -21,7 +21,7 @@ from __future__ import annotations
 import json
 import os
 from dataclasses import dataclass
-from typing import Protocol
+from typing import Optional, Protocol
 
 import requests
 
@@ -50,15 +50,25 @@ class AnalysisResult:
     summary: str
     mood_notes: str
     key_topics: list[str]
+    # 1 (rough) - 10 (great), the analyzer's own rough read, not a
+    # clinical score. Optional and defaulted last so every existing
+    # positional AnalysisResult(...) call in this codebase and its
+    # tests keeps working unchanged. None when a provider's response
+    # doesn't include one (see _parse_response) -- the mood trend
+    # chart on /analysis just skips those points rather than plotting
+    # a fabricated number.
+    mood_score: Optional[int] = None
 
 
 class Analyzer(Protocol):
-    def analyze(self, entries: list[Entry]) -> AnalysisResult:
+    def analyze(self, entries: list[Entry], instruction: str = "") -> AnalysisResult:
         """Analyze a batch of entries (already filtered to whatever date
-        range the caller wants -- see EntryStore.range_between). Should
-        raise on failure (missing credentials, API error, malformed
-        response) rather than returning a fabricated or empty result
-        that looks like a real answer."""
+        range the caller wants -- see EntryStore.range_between).
+        `instruction` is optional audience-specific framing (see
+        actions.AUDIENCE_INSTRUCTIONS), empty by default. Should raise
+        on failure (missing credentials, API error, malformed response)
+        rather than returning a fabricated or empty result that looks
+        like a real answer."""
         ...
 
 
@@ -78,10 +88,16 @@ class RateLimitError(RuntimeError):
     needs to change (e.g. retry-after handling)."""
 
 
-def _build_prompt(entries: list[Entry]) -> str:
+def _build_prompt(entries: list[Entry], instruction: str = "") -> str:
     entries_block = "\n\n".join(
         f"[{entry.created_at.isoformat()}] {entry.transcript}" for entry in entries
     )
+    # `instruction` is audience-specific framing (see
+    # actions.AUDIENCE_INSTRUCTIONS) -- e.g. steering a provider-bound
+    # report toward clinically relevant patterns instead of day-to-day
+    # detail. Empty for "self" (the default), so the prompt is
+    # unchanged from before this existed unless a caller opts in.
+    audience_line = f"\n\nSpecifically for this audience: {instruction}" if instruction else ""
     return (
         "You are analyzing a personal voice journal's entries for the writer's own review "
         "(and possibly to share with a therapist). Be honest and specific, not generic or "
@@ -90,7 +106,10 @@ def _build_prompt(entries: list[Entry]) -> str:
         '"mood_notes": "a few sentences specifically about emotional tone/trends, if any are '
         'genuinely visible -- say so plainly if the entries don\'t show a clear trend, don\'t '
         'invent one", '
-        '"key_topics": ["topic1", "topic2", ...]}\n\n'
+        '"mood_score": an integer 1-10, your own rough read of overall mood across these entries '
+        '(1 = very rough, 10 = great, 5 = neutral or genuinely mixed), '
+        '"key_topics": ["topic1", "topic2", ...]}'
+        f"{audience_line}\n\n"
         f"Entries:\n\n{entries_block}"
     )
 
@@ -121,12 +140,25 @@ def _parse_response(response_text: str, entry_count: int, entries: list[Entry], 
         if required_key not in parsed:
             raise RuntimeError(f"{provider_name}'s response is missing required key \"{required_key}\": {parsed!r}")
 
+    # mood_score is asked for but NOT required -- a provider that
+    # ignores the field (or returns something unparseable) shouldn't
+    # fail the whole analysis over a chart data point. See
+    # AnalysisResult.mood_score's docstring.
+    mood_score = None
+    try:
+        raw_score = parsed.get("mood_score")
+        if raw_score is not None:
+            mood_score = max(1, min(10, int(raw_score)))
+    except (TypeError, ValueError):
+        mood_score = None
+
     return AnalysisResult(
         entry_count=entry_count,
         total_word_count=sum(entry.word_count for entry in entries),
         summary=parsed["summary"],
         mood_notes=parsed["mood_notes"],
         key_topics=list(parsed["key_topics"]),
+        mood_score=mood_score,
     )
 
 
@@ -156,7 +188,7 @@ class _HttpAnalyzer:
         debuggable about exactly which model failed."""
         return self.key_label
 
-    def analyze(self, entries: list[Entry]) -> AnalysisResult:
+    def analyze(self, entries: list[Entry], instruction: str = "") -> AnalysisResult:
         if not entries:
             raise NoEntriesError("Cannot analyze an empty list of entries.")
         if not self.api_key:
@@ -164,7 +196,7 @@ class _HttpAnalyzer:
                 f"No {self.key_label} API key found. Set {self.api_key_env_var} or pass api_key= explicitly."
             )
 
-        response = self._request(_build_prompt(entries))
+        response = self._request(_build_prompt(entries, instruction))
         if response.status_code == 429:
             raise RateLimitError(f"{self._label} rate limited: {response.text}")
         if response.status_code != 200:
@@ -289,14 +321,14 @@ class FallbackAnalyzer:
             raise ValueError("FallbackAnalyzer needs at least one provider")
         self.providers = providers
 
-    def analyze(self, entries: list[Entry]) -> AnalysisResult:
+    def analyze(self, entries: list[Entry], instruction: str = "") -> AnalysisResult:
         if not entries:
             raise NoEntriesError("Cannot analyze an empty list of entries.")
 
         errors = []
         for provider in self.providers:
             try:
-                return provider.analyze(entries)
+                return provider.analyze(entries, instruction)
             except Exception as exc:  # noqa: BLE001 -- deliberately broad, see docstring
                 errors.append(f"{type(provider).__name__}: {exc}")
 

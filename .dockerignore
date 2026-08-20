@@ -1,0 +1,17 @@
+# Dockerfile only ever COPYs pyproject.toml and src/, but without this
+# file the whole build context (everything below) still gets sent to
+# the Docker daemon on every build, which is most of why a build could
+# feel slow -- .venv/ alone can be gigabytes once torch/deepfilternet
+# are installed on the host.
+.venv/
+__pycache__/
+*.pyc
+*.egg-info/
+.pytest_cache/
+.git/
+.github/
+tests/
+docs/
+*.md
+.env*
+!.env.example
